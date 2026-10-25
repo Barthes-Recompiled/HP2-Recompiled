@@ -36,3 +36,5 @@ python3 -m tools.recomp "$xbe" --all --split 1000 --gen-dir "$port/src/recomp/ge
     --exclude-manual "$port/src/hle_trainer.c" \
     --exclude-manual "$port/src/hle_video.c" \
     --exclude-manual "$port/src/renderer/xdk/hle_d3d8.cpp"
+# fixes inside generated functions the lifter gets wrong (tools/patch_gen.py: fails if one no longer applies)
+python3 "$port/tools/patch_gen.py" "$port/src/recomp/gen"
