@@ -1,0 +1,26 @@
+Harry Potter and the Chamber of Secrets - PC port: third-party attribution
+==========================================================================
+
+The port's own code is MIT licensed (LICENSE). The xboxrecomp toolkit it is
+built on carries its own attribution (the toolkit's NOTICE). The port also
+includes:
+
+  src/renderer/        The Direct3D 12 renderer, the XDK Direct3D, DirectSound
+                       and XInput layers it is built on.
+                       Copyright (c) 2026 TGP482, Joshhhuaaa. MIT licence:
+                       src/renderer/LICENSE (licenses/renderer-MIT.txt in a
+                       release).
+
+  third_party/imgui/   Dear ImGui (the options panel and the launcher's page).
+                       Copyright (c) 2014-2024 Omar Cornut. MIT licence:
+                       third_party/imgui/LICENSE.txt (licenses/DearImGui.txt
+                       in a release).
+
+  src/renderer/gpu/smaa_shader.h, smaa_textures.h
+                       SMAA (github.com/iryoku/smaa), the SMAA anti-aliasing.
+                       Copyright (C) 2013 Jorge Jimenez, Jose I. Echevarria,
+                       Belen Masia, Fernando Navarro, Diego Gutierrez. MIT
+                       licence, in the file's header (its notice is not
+                       required in binary distributions).
+
+The Harry Potter game is not included and is not covered by these licences.

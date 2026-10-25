@@ -1,0 +1,546 @@
+[
+ {
+  "start": "0x001306F0"
+ },
+ {
+  "start": "0x00130A80"
+ },
+ {
+  "start": "0x00130AC0"
+ },
+ {
+  "start": "0x00130BC0"
+ },
+ {
+  "start": "0x00130CA0"
+ },
+ {
+  "start": "0x00130D90"
+ },
+ {
+  "start": "0x00130E10"
+ },
+ {
+  "start": "0x00130E70"
+ },
+ {
+  "start": "0x00130EC0"
+ },
+ {
+  "start": "0x00130F20"
+ },
+ {
+  "start": "0x00130F90"
+ },
+ {
+  "start": "0x00131CF0"
+ },
+ {
+  "start": "0x00131D60"
+ },
+ {
+  "start": "0x00131D90"
+ },
+ {
+  "start": "0x00131E00"
+ },
+ {
+  "start": "0x00131E70"
+ },
+ {
+  "start": "0x00131E90"
+ },
+ {
+  "start": "0x00131EB0"
+ },
+ {
+  "start": "0x00131F10"
+ },
+ {
+  "start": "0x00131F50"
+ },
+ {
+  "start": "0x00131FD0"
+ },
+ {
+  "start": "0x00132020"
+ },
+ {
+  "start": "0x00176418"
+ },
+ {
+  "start": "0x00176E50"
+ },
+ {
+  "start": "0x00138E90"
+ },
+ {
+  "start": "0x000A4C19"
+ },
+ {
+  "start": "0x000E7911"
+ },
+ {
+  "start": "0x00107497"
+ },
+ {
+  "start": "0x0017779C"
+ },
+ {
+  "start": "0x00177B5D"
+ },
+ {
+  "start": "0x00177BAF"
+ },
+ {
+  "start": "0x00177E7B"
+ },
+ {
+  "start": "0x00178479"
+ },
+ {
+  "start": "0x0017BEBE"
+ },
+ {
+  "start": "0x00046BA0"
+ },
+ {
+  "start": "0x0006A7C0"
+ },
+ {
+  "start": "0x0006BB90"
+ },
+ {
+  "start": "0x00072540"
+ },
+ {
+  "start": "0x00072D80"
+ },
+ {
+  "start": "0x000743F0"
+ },
+ {
+  "start": "0x00075A20"
+ },
+ {
+  "start": "0x000780C0"
+ },
+ {
+  "start": "0x00078480"
+ },
+ {
+  "start": "0x00078840"
+ },
+ {
+  "start": "0x00078A40"
+ },
+ {
+  "start": "0x00078D90"
+ },
+ {
+  "start": "0x00078F90"
+ },
+ {
+  "start": "0x000792E0"
+ },
+ {
+  "start": "0x000797A0"
+ },
+ {
+  "start": "0x0007A0E0"
+ },
+ {
+  "start": "0x0007AB70"
+ },
+ {
+  "start": "0x0007AE40"
+ },
+ {
+  "start": "0x0007B250"
+ },
+ {
+  "start": "0x0007B490"
+ },
+ {
+  "start": "0x0007B600"
+ },
+ {
+  "start": "0x0007BB60"
+ },
+ {
+  "start": "0x0007BD00"
+ },
+ {
+  "start": "0x0007C0F0"
+ },
+ {
+  "start": "0x0007C740"
+ },
+ {
+  "start": "0x00083410"
+ },
+ {
+  "start": "0x00084100"
+ },
+ {
+  "start": "0x00084E90"
+ },
+ {
+  "start": "0x00085190"
+ },
+ {
+  "start": "0x000853B0"
+ },
+ {
+  "start": "0x00085600"
+ },
+ {
+  "start": "0x00085C20"
+ },
+ {
+  "start": "0x00085E50"
+ },
+ {
+  "start": "0x00086080"
+ },
+ {
+  "start": "0x00086360"
+ },
+ {
+  "start": "0x00087140"
+ },
+ {
+  "start": "0x000874D0"
+ },
+ {
+  "start": "0x0008E4D0"
+ },
+ {
+  "start": "0x0008F9A0"
+ },
+ {
+  "start": "0x00092010"
+ },
+ {
+  "start": "0x00094C80"
+ },
+ {
+  "start": "0x00096040"
+ },
+ {
+  "start": "0x000995B0"
+ },
+ {
+  "start": "0x000997B0"
+ },
+ {
+  "start": "0x0009B410"
+ },
+ {
+  "start": "0x0009C7C0"
+ },
+ {
+  "start": "0x0009CD90"
+ },
+ {
+  "start": "0x0009F020"
+ },
+ {
+  "start": "0x000B1180"
+ },
+ {
+  "start": "0x000B4CE0"
+ },
+ {
+  "start": "0x000B5800"
+ },
+ {
+  "start": "0x000B5950"
+ },
+ {
+  "start": "0x000B5D30"
+ },
+ {
+  "start": "0x000B5E80"
+ },
+ {
+  "start": "0x000BE540"
+ },
+ {
+  "start": "0x000C9F80"
+ },
+ {
+  "start": "0x000D1670"
+ },
+ {
+  "start": "0x000D1C10"
+ },
+ {
+  "start": "0x000DCAE0"
+ },
+ {
+  "start": "0x000DDC20"
+ },
+ {
+  "start": "0x000DE5A0"
+ },
+ {
+  "start": "0x000E7140"
+ },
+ {
+  "start": "0x000E9BB0"
+ },
+ {
+  "start": "0x000EA2F0"
+ },
+ {
+  "start": "0x000EE120"
+ },
+ {
+  "start": "0x000EE6E0"
+ },
+ {
+  "start": "0x000EF630"
+ },
+ {
+  "start": "0x000EF770"
+ },
+ {
+  "start": "0x000EF940"
+ },
+ {
+  "start": "0x000F1D60"
+ },
+ {
+  "start": "0x000F5DC0"
+ },
+ {
+  "start": "0x000F6670"
+ },
+ {
+  "start": "0x000F6770"
+ },
+ {
+  "start": "0x000FA1E0"
+ },
+ {
+  "start": "0x000FA7C0"
+ },
+ {
+  "start": "0x000FAD60"
+ },
+ {
+  "start": "0x000FB010"
+ },
+ {
+  "start": "0x000FD7B0"
+ },
+ {
+  "start": "0x00103C30"
+ },
+ {
+  "start": "0x00104020"
+ },
+ {
+  "start": "0x00104760"
+ },
+ {
+  "start": "0x00104C30"
+ },
+ {
+  "start": "0x00104E60"
+ },
+ {
+  "start": "0x001076F0"
+ },
+ {
+  "start": "0x0010AB70"
+ },
+ {
+  "start": "0x0010ACA0"
+ },
+ {
+  "start": "0x0010B9C0"
+ },
+ {
+  "start": "0x00031E10"
+ },
+ {
+  "start": "0x00020730"
+ },
+ {
+  "start": "0x00063CB0"
+ },
+ {
+  "start": "0x00021F40"
+ },
+ {
+  "start": "0x00023F60"
+ },
+ {
+  "start": "0x00024970"
+ },
+ {
+  "start": "0x00024BB0"
+ },
+ {
+  "start": "0x000254F0"
+ },
+ {
+  "start": "0x00025E10"
+ },
+ {
+  "start": "0x00026320"
+ },
+ {
+  "start": "0x00052820"
+ },
+ {
+  "start": "0x00054350"
+ },
+ {
+  "start": "0x00055230"
+ },
+ {
+  "start": "0x00055620"
+ },
+ {
+  "start": "0x00056060"
+ },
+ {
+  "start": "0x000585F0"
+ },
+ {
+  "start": "0x0005C000"
+ },
+ {
+  "start": "0x0005CCB0"
+ },
+ {
+  "start": "0x0005D430"
+ },
+ {
+  "start": "0x0005D6A0"
+ },
+ {
+  "start": "0x0005E460"
+ },
+ {
+  "start": "0x0005E670"
+ },
+ {
+  "start": "0x0005EF70"
+ },
+ {
+  "start": "0x0005F1C0"
+ },
+ {
+  "start": "0x0005FBB0"
+ },
+ {
+  "start": "0x0005FE20"
+ },
+ {
+  "start": "0x00060550"
+ },
+ {
+  "start": "0x00060DE0"
+ },
+ {
+  "start": "0x00061050"
+ },
+ {
+  "start": "0x000617F0"
+ },
+ {
+  "start": "0x00064990"
+ },
+ {
+  "start": "0x00065C30"
+ },
+ {
+  "start": "0x00065D40"
+ },
+ {
+  "start": "0x00065EE0"
+ },
+ {
+  "start": "0x000661C0"
+ },
+ {
+  "start": "0x000663D0"
+ },
+ {
+  "start": "0x00066750"
+ },
+ {
+  "start": "0x00066A60"
+ },
+ {
+  "start": "0x00066BC0"
+ },
+ {
+  "start": "0x00067040"
+ },
+ {
+  "start": "0x00069560"
+ },
+ {
+  "start": "0x0006CCC0",
+  "note": "static code-pointer scan 2026-10-13"
+ },
+ {
+  "start": "0x0006CEA0",
+  "note": "static code-pointer scan 2026-10-13"
+ },
+ {
+  "start": "0x0006CFE0",
+  "note": "static code-pointer scan 2026-10-13"
+ },
+ {
+  "start": "0x0006D120",
+  "note": "static code-pointer scan 2026-10-13"
+ },
+ {
+  "start": "0x0006D420",
+  "note": "static code-pointer scan 2026-10-13"
+ },
+ {
+  "start": "0x0006E6E0",
+  "note": "static code-pointer scan 2026-10-13"
+ },
+ {
+  "start": "0x000FC270",
+  "note": "static code-pointer scan 2026-10-13"
+ },
+ {
+  "start": "0x00057FC0",
+  "note": "static code-pointer scan 2026-10-13"
+ },
+ {
+  "start": "0x0012FE9B",
+  "note": "static code-pointer scan 2026-10-13"
+ },
+ {
+  "start": "0x0012FEBB",
+  "note": "static code-pointer scan 2026-10-13"
+ },
+ {
+  "start": "0x0012FEDB",
+  "note": "static code-pointer scan 2026-10-13"
+ },
+ {
+  "start": "0x00038A30",
+  "note": "object callback +0xCC (thunk: mov ecx,[esp+4]; jmp 0x387F0), unresolved ICALL after the Whomping Willow 2026-10-14"
+ },
+ {
+  "start": "0x000387F0",
+  "note": "reached only through the 0x38A30 thunk"
+ },
+ {
+  "start": "0x000FA08E"
+ },
+ {
+  "start": "0x000E3DE9"
+ }
+]

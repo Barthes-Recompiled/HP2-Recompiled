@@ -1,0 +1,633 @@
+/**
+ * Debug overrides for the missing-geometry hunt (floor holes in Borgin & Burkes).
+ *
+ * sub_00034950 is the game's view frustum test (this = frustum, args: bounds, matrix, radius scale; 1 visible,
+ * 0 culled), reached from the per-object cull sub_00039880 that decides whether the scene draws an object. F6 makes
+ * every object pass it; a floor that comes back then was culled, not lost on the way to the GPU.
+ *
+ * Built into the recompile with --exclude-manual ../hpcos/src/hle_debug.c.
+ */
+
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <windows.h>
+
+#include <stdint.h>
+#include <stdio.h>
+#include <math.h>
+#include <stdlib.h>
+#include <string.h>
+
+#define RECOMP_GENERATED_CODE
+#include "recomp/gen/recomp_types.h"
+
+extern void sub_00034950_gen(void);
+extern int app_DrawAll(void); /* hpcos.toml draw_all_objects (renderer/app/app.cpp) */
+
+static int g_nocull;
+static unsigned g_tests, g_culled;
+static DWORD g_t0;
+
+/* per frustum (this): the camera's own is 0x50C1D4; the angles are [left, right, top, bottom] in radians at +0..+0xC,
+ * near/far at +0x10/+0x14, set by sub_000348C0 from the vertical fov and the aspect at +0xE4/+0xE8 */
+static struct { uint32_t fr; unsigned tests, culled; } g_frs[8];
+
+/* draw_all_objects: the room walk (sub_00048A10) tests a room's objects against a copy of the camera's frustum
+ * narrowed to the doorway or arch it is seen through (angles from the room's portal, list+0x1C +0x44), which left
+ * out parts of the library still on screen; with the setting an object that test leaves out gets a second test
+ * against the camera's own frustum, so all that is in view is drawn and what is behind the camera is still left out
+ * (every test passing cost Quidditch 12 fps) */
+#define CAMERA_FRUSTUM 0x50C1D4u
+
+extern int hpcos_Widescreen(void); /* renderer/xdk/hle_d3d8.cpp: booted in 16:9 */
+
+/* the second test's frustum is the camera's widened to the picture shown plus a margin (RECOMP_CULL_MARGIN, degrees,
+ * default 8): objects at the screen's edges vanished as the camera turned (2026-10-25, the Burrow's barn), and after a
+ * wizard card the camera's frustum stays at the card screen's 4:3 (sub_00028380 writes 4 / 3 into its aspect, +0xE4)
+ * while the gameplay picture is still 16:9. The test reads only the angles at +0..+0xC, near/far and the matrix */
+static float cull_margin(void)
+{
+    static float m = -1.0f;
+    if (m < 0.0f) {
+        const char *e = getenv("RECOMP_CULL_MARGIN");
+        m = e ? (float)atof(e) : 8.0f;
+        if (m < 0.0f) m = 0.0f;
+        if (m > 30.0f) m = 30.0f;
+        fprintf(stderr, "[CULL] objects left out get a second test against the camera's view widened by %.1f degrees\n", m);
+        m *= 0.017453292f;
+    }
+    return m;
+}
+
+static unsigned g_widened;
+
+static void test_widened(void)
+{
+    uint32_t f = CAMERA_FRUSTUM;
+    float s[4] = {MEMF(f), MEMF(f + 4), MEMF(f + 8), MEMF(f + 0xC)}, m = cull_margin();
+    float v = fmaxf(fabsf(s[2]), fabsf(s[3]));
+    float h = fmaxf(fmaxf(fabsf(s[0]), fabsf(s[1])), atanf(tanf(v) * (hpcos_Widescreen() ? 16.0f / 9.0f : 4.0f / 3.0f)));
+    h = fminf(h + m, 1.4f), v = fminf(v + m, 1.4f);
+    MEMF(f) = -h, MEMF(f + 4) = h, MEMF(f + 8) = v, MEMF(f + 0xC) = -v;
+    g_ecx = f;
+    sub_00034950_gen();
+    MEMF(f) = s[0], MEMF(f + 4) = s[1], MEMF(f + 8) = s[2], MEMF(f + 0xC) = s[3];
+    if (g_eax) g_widened++;
+}
+
+/* only the drawing's callers get the second test: the per-object cull (sub_00039880, the room walk's objects) and
+ * sub_0003B520 (tests against the camera's frustum, then draws through sub_000395C0). The game's own "is it on
+ * screen?" (sub_000F55D0, called from spell and object code at 0xE132D, 0xF6FC0, 0xF94F1, 0xFA096...) keeps the
+ * Xbox's answer: with the margin it said yes for things just off screen (2026-10-25, Alohomora's aim moved) */
+static int drawing_caller(uint32_t ret)
+{
+    return ret == 0x000398ECu || ret == 0x0003B57Bu;
+}
+
+void sub_00034950(void)
+{
+    uint32_t fr = g_ecx, ret = MEM32(g_esp);
+    /* the game's own test first, so nothing it draws is ever left out (an object's animation sounds play from its
+     * drawing: a door's swing went quiet as the camera passed it); only an object it leaves out is tested again
+     * against the camera's widened frustum. The test writes into its argument slots, so they are put back for the
+     * second */
+    uint32_t s_esp = g_esp, a0 = MEM32(g_esp + 4), a1 = MEM32(g_esp + 8), a2 = MEM32(g_esp + 12);
+    uint32_t s_esi = g_esi, s_edi = g_edi;
+    sub_00034950_gen();
+    if (!g_eax && g_nocull != app_DrawAll() && drawing_caller(ret)) {
+        g_esp = s_esp, g_esi = s_esi, g_edi = s_edi;
+        MEM32(g_esp + 4) = a0, MEM32(g_esp + 8) = a1, MEM32(g_esp + 12) = a2;
+        test_widened();
+    }
+    g_tests++;
+    if (!g_eax) g_culled++;
+    for (int i = 0; i < 8; i++)
+        if (g_frs[i].fr == fr || !g_frs[i].fr) {
+            g_frs[i].fr = fr;
+            g_frs[i].tests++;
+            if (!g_eax) g_frs[i].culled++;
+            break;
+        }
+    if (GetAsyncKeyState(VK_F6) & 1) {
+        g_nocull = !g_nocull;
+        fprintf(stderr, "[CULL] objects tested against %s\n", g_nocull != app_DrawAll() ? "the camera's view" : "the room's portal view (Xbox)");
+    }
+    DWORD now = GetTickCount();
+    if (now - g_t0 >= 5000) {
+        fprintf(stderr, "[CULL] %u frustum tests, %u culled, %u kept by the widened view in %lu ms\n", g_tests, g_culled,
+                g_widened, (unsigned long)(now - g_t0));
+        for (int i = 0; i < 8 && g_frs[i].fr; i++) {
+            uint32_t f = g_frs[i].fr;
+            const double d = 57.29577951308232;
+            fprintf(stderr, "[CULL]   frustum %08X: %u tests %u culled, angles L %.2f R %.2f T %.2f B %.2f, near %g far %g, aspect %g/%g\n",
+                    f, g_frs[i].tests, g_frs[i].culled, MEMF(f) * d, MEMF(f + 4) * d, MEMF(f + 8) * d, MEMF(f + 0xC) * d,
+                    MEMF(f + 0x10), MEMF(f + 0x14), MEMF(f + 0xE4), MEMF(f + 0xE8));
+            g_frs[i].fr = 0, g_frs[i].tests = g_frs[i].culled = 0;
+        }
+        g_tests = g_culled = g_widened = 0;
+        g_t0 = now;
+    }
+}
+
+
+
+/* RECOMP_SND_TRACE=1: every sound the game asks for, as it fills in a voice for it ([SND]): the id (0x02xxxxxx speech,
+ * 0x03xxxxxx effects; a wizard card's name is field 5 of its 20 byte entry at 0x1F4218), the voice and the code that
+ * asked. The sound manager looks the id up in its banks later; RECOMP_DSOUND_TRACE's buffer lines after it in the same
+ * log show whether anything then played. sub_00040A00 is __thiscall (ecx = voice; id, ... on the stack). The generated
+ * body is renamed sub_00040A00_gen by hand in gen/recomp_0000.c until a regen with --exclude-manual for this file. */
+/* a speech voice's 0x70 bytes again 60 and 400 ms after its request ([SND+]), from a thread of its own: what the sound
+ * manager made of it, found in a loaded bank or not */
+static struct { uint32_t voice, id; DWORD t; } g_snd_watch[16];
+static volatile LONG g_snd_watch_n;
+
+static void snd_dump(const char *when, uint32_t voice, uint32_t id)
+{
+    char line[1024];
+    int n = snprintf(line, sizeof line, "[SND+] %s id %08X voice %08X:", when, id, voice);
+    for (uint32_t o = 0; o < 0x70 && n < (int)sizeof line - 12; o += 4) n += snprintf(line + n, sizeof line - n, " %08X", MEM32(voice + o));
+    fprintf(stderr, "%s\n", line);
+}
+
+static DWORD WINAPI snd_watch_thread(LPVOID unused)
+{
+    (void)unused;
+    uint8_t done[16] = {0};
+    for (;;) {
+        Sleep(20);
+        LONG n = g_snd_watch_n;
+        for (LONG i = 0; i < n && i < 16; i++) {
+            DWORD age = GetTickCount() - g_snd_watch[i].t;
+            if (!(done[i] & 1) && age >= 60) snd_dump("60ms", g_snd_watch[i].voice, g_snd_watch[i].id), done[i] |= 1;
+            if (!(done[i] & 2) && age >= 400) snd_dump("400ms", g_snd_watch[i].voice, g_snd_watch[i].id), done[i] |= 2;
+        }
+    }
+    return 0;
+}
+
+extern void sub_00040A00_gen(void);
+void sub_00040A00(void)
+{
+    static int on = -1;
+    if (on < 0) {
+        const char *e = getenv("RECOMP_SND_TRACE");
+        on = e && *e && *e != '0';
+    }
+    if (on) {
+        uint32_t id = MEM32(g_esp + 4);
+        /* the caller's caller too: sub_00041A60 / sub_000419B0 sit between the game code and here */
+        char line[512];
+        int n = snprintf(line, sizeof line, "[SND] %lu id %08X voice %08X from %08X %08X %08X | calls", (unsigned long)GetTickCount(),
+                         id, g_ecx, MEM32(g_esp), MEM32(g_esp + 0x24), MEM32(g_esp + 0x3C));
+        /* the game's code addresses on the stack (return addresses, a call before each): who asked for it */
+        for (uint32_t a = g_esp; a < g_esp + 0x180 && n < (int)sizeof line - 12; a += 4) {
+            uint32_t v = MEM32(a);
+            if (v >= 0x11005 && v < 0x130620 && (MEM8(v - 5) == 0xE8 || MEM8(v - 2) == 0xFF || MEM8(v - 3) == 0xFF || MEM8(v - 6) == 0xFF))
+                n += snprintf(line + n, sizeof line - n, " %08X", v);
+        }
+        fprintf(stderr, "%s\n", line);
+        uint32_t voice = g_ecx;
+        sub_00040A00_gen();
+        if ((id & 0xFF000000u) == 0x02000000u && g_snd_watch_n < 16) {
+            static int started;
+            if (!started) started = 1, CloseHandle(CreateThread(NULL, 0, snd_watch_thread, NULL, 0, NULL));
+            snd_dump("0ms", voice, id);
+            LONG i = g_snd_watch_n;
+            g_snd_watch[i].voice = voice, g_snd_watch[i].id = id, g_snd_watch[i].t = GetTickCount();
+            InterlockedIncrement(&g_snd_watch_n);
+        }
+        return;
+    }
+    sub_00040A00_gen();
+}
+
+/* House points ([PTS], always on: these run a few times per level). Points are words at 0x527EE4 (Gryffindor,
+ * Slytherin, Ravenclaw, Hufflepuff). sub_000818C0(pts, house) adds, sub_000818E0(pts, house) takes away (floor 0).
+ * sub_000C7850(any_amount, budget) rolls what getting caught costs ({0,5,10,20} or {5,10,20}, at most budget) into
+ * 0x545358; byte 0x527EFA set = Harry is disguised as Goyle, the cost then comes off Slytherin from a budget of 30
+ * (0x5283D8). sub_000E6A40(i) moves Slytherin/Ravenclaw/Hufflepuff after the house above them, capped 300/250/200.
+ * The generated bodies are renamed *_gen by hand until a regen with --exclude-manual for this file. */
+static const char *const g_house[4] = { "Gryffindor", "Slytherin", "Ravenclaw", "Hufflepuff" };
+
+static void pts_line(const char *what, uint32_t ret)
+{
+    fprintf(stderr, "[PTS] %lu %s from %08X | G %u S %u R %u H %u | day %u level %u goyle %u slyth-budget %d\n",
+            (unsigned long)GetTickCount(), what, ret, MEM16(0x527EE4), MEM16(0x527EE6), MEM16(0x527EE8), MEM16(0x527EEA),
+            MEM32(0x527B7C), MEM32(0x527B78), MEM8(0x527EFA), (int32_t)MEM32(0x5283D8));
+}
+
+static void pts_change(const char *verb, void (*body)(void))
+{
+    uint32_t ret = MEM32(g_esp), pts = MEM16(g_esp + 4), house = MEM32(g_esp + 8);
+    body();
+    char what[64];
+    snprintf(what, sizeof what, "%s %u %s", verb, pts, house < 4 ? g_house[house] : "?");
+    pts_line(what, ret);
+}
+
+extern void sub_000818C0_gen(void);
+void sub_000818C0(void) { pts_change("add", sub_000818C0_gen); }
+
+extern void sub_000818E0_gen(void);
+void sub_000818E0(void) { pts_change("take", sub_000818E0_gen); }
+
+extern void sub_000C7850_gen(void);
+void sub_000C7850(void)
+{
+    uint32_t ret = MEM32(g_esp), any = MEM8(g_esp + 4), budget = MEM32(g_esp + 8);
+    sub_000C7850_gen();
+    char what[64];
+    snprintf(what, sizeof what, "caught: roll %s budget %d -> costs %u", any ? "0/5/10/20" : "5/10/20", (int32_t)budget,
+             MEM32(0x545358));
+    pts_line(what, ret);
+}
+
+/* House point caps (not debug: the user's choice). Each night's board moves Slytherin after Gryffindor, Ravenclaw after
+ * Slytherin and Hufflepuff after Ravenclaw (sub_000E6A40(i) over the table at 0x20AD70, 32 bytes an entry, cap at
+ * +8), capped 300 / 250 / 200 on the Xbox: past 300 Gryffindor leads every night and the points stop mattering.
+ * Here Slytherin has no cap (it can still lead a night, the board's "Slytherin ahead" ending) and the other two 600.
+ * RECOMP_HOUSE_CAPS=0 keeps the Xbox's. */
+static void house_caps(void)
+{
+    static int on = -1;
+    if (on < 0) {
+        const char *e = getenv("RECOMP_HOUSE_CAPS");
+        on = !(e && *e == '0');
+    }
+    if (!on) return;
+    MEM32(0x20AD70 + 32 * 1 + 8) = 600;          /* Hufflepuff, after Ravenclaw (Xbox 200) */
+    MEM32(0x20AD70 + 32 * 2 + 8) = 600;          /* Ravenclaw, after Slytherin (Xbox 250) */
+    MEM32(0x20AD70 + 32 * 3 + 8) = 0x7FFFFFFF;   /* Slytherin, after Gryffindor (Xbox 300): none */
+}
+
+extern void sub_000E6A40_gen(void);
+void sub_000E6A40(void)
+{
+    uint32_t ret = MEM32(g_esp), i = MEM32(g_esp + 4);
+    house_caps();
+    sub_000E6A40_gen();
+    char what[64];
+    snprintf(what, sizeof what, "follow %s", i >= 1 && i <= 3 ? g_house[4 - i] : "?");
+    pts_line(what, ret);
+}
+
+/* The Grand Staircase gold vases on their plinths and the boxes whose lid opens when hit ([VASE], always on: one
+ * class). A vase is an entity whose setup is
+ * sub_000D18B0 (entity+0x70) and whose update is sub_000D19E0: it gets a physics body, a hit sets the body's 0x20000
+ * flag, the update then spawns what the vase gives and moves to state 1 (entity+0x84). sub_00042D60(entity, flag)
+ * removes an entity. Logs setup, each state change, and the removal of a vase with the code addresses on the stack,
+ * to find what makes vases vanish after going through a door (the generated bodies are renamed *_gen by hand). */
+static void vase_line(const char *what, uint32_t ent)
+{
+    uint32_t obj = MEM32(ent + 0xAC);
+    float p[3] = { 0, 0, 0 };
+    if (obj) memcpy(p, (const void *)XBOX_PTR(obj + 0x14), sizeof p);
+    char line[512];
+    int n = snprintf(line, sizeof line, "[VASE] %lu %s ent %08X obj %08X pos %.3f %.3f %.3f state %u level %u |",
+                     (unsigned long)GetTickCount(), what, ent, obj, p[0], p[1], p[2], MEM32(ent + 0x84),
+                     MEM32(0x527B78));
+    for (uint32_t a = g_esp; a < g_esp + 0x200 && n < (int)sizeof line - 12; a += 4) {
+        uint32_t v = MEM32(a);
+        if (v >= 0x11000 && v < 0x130620) n += snprintf(line + n, sizeof line - n, " %08X", v);
+    }
+    fprintf(stderr, "%s\n", line);
+}
+
+extern void sub_000D18B0_gen(void);
+void sub_000D18B0(void)
+{
+    uint32_t ent = MEM32(g_esp + 4), rec = MEM32(ent + 0xA8);
+    /* the box model without the lid animation its record asks for (1000027D: only B0000276, which makes the box
+     * vanish; the other box model 1000027B has B00001ED and is only loaded where that box is) is set up as the
+     * other box model, which the setup then loads: the same box with a lid that opens. RECOMP_BOX_ANIM=0: as the
+     * Xbox */
+    static int fix = -1;
+    if (fix < 0) {
+        const char *e = getenv("RECOMP_BOX_ANIM");
+        fix = !(e && e[0] == '0');
+    }
+    if (fix && rec && MEM32(rec + 0x20) == 0x1000027Du && MEM32(rec + 0x28) == 0xB00001EDu) {
+        MEM32(rec + 0x20) = 0x1000027Bu;
+        fprintf(stderr, "[VASE] box record %08X: model 1000027D (no lid animation) set up as 1000027B\n", rec);
+    }
+    sub_000D18B0_gen();
+    vase_line("setup", ent);
+}
+
+extern void sub_000D19E0_gen(void);
+void sub_000D19E0(void)
+{
+    uint32_t ent = MEM32(g_esp + 4), state = MEM32(ent + 0x84), body = MEM32(ent + 0xB0);
+    uint32_t hit = body ? MEM32(body + 0x20) & 0x20000u : 0;
+    if (hit) vase_line("hit", ent);
+    sub_000D19E0_gen();
+    if (MEM32(ent + 0x84) != state) vase_line("state", ent);
+    /* a hit's animation (a box's lid opening, 2026-10-25: one Grand Staircase box went back to state 0 a frame
+     * later, unanimated): the update starts it with sub_0003D020 from the block at 0x205CA8 (its +0 the animation,
+     * looked up by sub_00030600 / sub_00050B60 from the level record's +0x20, else the body's +0x5C; +0x14 the
+     * record's +0x28 or +0x2C) and keeps the player at entity+0x8C, 0 when none started; state 1 then waits for the
+     * player to finish (+0x155 == 2), and without one goes back to 0 at once */
+    if (hit && MEM32(ent + 0x84) == 1 && state != 1) {
+        uint32_t rec = MEM32(ent + 0xA8);
+        fprintf(stderr, "[VASE]   animation: player %08X | record %08X +20 %08X +28 %08X +2C %08X | block %08X %08X "
+                "%08X %08X %08X %08X %08X\n", MEM32(ent + 0x8C), rec, rec ? MEM32(rec + 0x20) : 0,
+                rec ? MEM32(rec + 0x28) : 0, rec ? MEM32(rec + 0x2C) : 0, MEM32(0x205CA8), MEM32(0x205CAC),
+                MEM32(0x205CB0), MEM32(0x205CB4), MEM32(0x205CB8), MEM32(0x205CBC), MEM32(0x205CC0));
+    }
+}
+
+/* Entities a Grand Staircase group spawner made (sub_000FC800 stores them in its list, entry+0), so their removal by
+ * anything else shows up too: a list entry still pointing at a freed slot would make the spawner's clean-up
+ * (sub_000FC830) remove whatever lives there next. */
+static uint32_t g_spawned[64];
+
+static int spawned_find(uint32_t ent)
+{
+    for (int i = 0; i < 64; i++)
+        if (g_spawned[i] == ent) return i;
+    return -1;
+}
+
+static void ent_line(const char *what, uint32_t ent, uint32_t entry)
+{
+    uint32_t obj = ent ? MEM32(ent + 0xAC) : 0;
+    float p[3] = { 0, 0, 0 };
+    if (obj) memcpy(p, (const void *)XBOX_PTR(obj + 0x14), sizeof p);
+    char line[512];
+    int n = snprintf(line, sizeof line, "[SPAWN] %lu %s entry %08X ent %08X alive %u handler %08X pos %.3f %.3f %.3f level %u |",
+                     (unsigned long)GetTickCount(), what, entry, ent, ent ? MEM32(ent) & 1 : 0, ent ? MEM32(ent + 0x70) : 0,
+                     p[0], p[1], p[2], MEM32(0x527B78));
+    for (uint32_t a = g_esp; a < g_esp + 0x100 && n < (int)sizeof line - 12; a += 4) {
+        uint32_t v = MEM32(a);
+        if (v >= 0x11000 && v < 0x130620) n += snprintf(line + n, sizeof line - n, " %08X", v);
+    }
+    fprintf(stderr, "%s\n", line);
+}
+
+extern void sub_00042D60_gen(void);
+void sub_00042D60(void)
+{
+    uint32_t ent = MEM32(g_esp + 4);
+    if (ent && MEM32(ent + 0x70) == 0x000D18B0u) vase_line("remove", ent);
+    int i = ent ? spawned_find(ent) : -1;
+    if (i >= 0) {
+        ent_line("remove spawned", ent, 0);
+        g_spawned[i] = 0;
+    }
+    sub_00042D60_gen();
+}
+
+/* sub_000FC800(spawner, entry): entry = {entity, kind, id, level record}; spawns the record's entity into entry+0 */
+extern void sub_000FC800_gen(void);
+void sub_000FC800(void)
+{
+    uint32_t entry = MEM32(g_esp + 8), before = MEM32(entry);
+    sub_000FC800_gen();
+    uint32_t ent = MEM32(entry);
+    char what[48];
+    snprintf(what, sizeof what, "spawn (entry had %08X)", before);
+    ent_line(what, ent, entry);
+    if (ent && spawned_find(ent) < 0) {
+        int i = spawned_find(0);
+        if (i >= 0) g_spawned[i] = ent;
+    }
+}
+
+/* sub_000FC830(list): the spawner's clean-up, removes every entry's entity (count list+0x14, entries list+0x18) */
+extern void sub_000FC830_gen(void);
+void sub_000FC830(void)
+{
+    uint32_t list = MEM32(g_esp + 4), count = MEM32(list + 0x14), entries = MEM32(list + 0x18);
+    for (uint32_t k = 0; k < count; k++) {
+        uint32_t entry = entries + k * 16, ent = MEM32(entry);
+        if (k < 64) ent_line("clean-up", ent, entry);
+        /* The level's streaming (sub_00046700) also removes these entities, clearing the level record but not this
+         * entry, and the slot then goes to another entity: the Grand Staircase's left vase after the library annex,
+         * which this clean-up then removed (the original does it too). sub_00043430 gives each entity its level
+         * record at +0xA8, the record this entry spawned (entry+0xC) for one of ours: anything else is left alone. */
+        if (ent && MEM32(ent + 0xA8) != MEM32(entry + 0xC)) {
+            ent_line("clean-up skips (not this entry's)", ent, entry);
+            MEM32(entry) = 0;
+        }
+    }
+    sub_000FC830_gen();
+}
+
+/* F8: an object trace ([OBJ]) of the next frames beside a capture of one of them (the F12 capture). The game draws an
+ * object through sub_00031E20(obj, ...) or sub_00020210(obj, ...) (this = the model); each line gives the draws it
+ * produced, numbered as the capture's frame.txt (hpcos_draw_seq), and the object's flags (+0xE8) and colour (+0x114,
+ * alpha at +0x117), to find what marks a fading object (dissolving sludge, a cut curtain). */
+extern volatile uint32_t hpcos_draw_seq;
+extern void hpcos_RequestCapture(void);
+static int g_obj_frames;
+static uint32_t g_obj_last_seq;
+
+static void obj_trace_begin(uint32_t *seq0)
+{
+    if (GetAsyncKeyState(VK_F8) & 1) {
+        g_obj_frames = 4;
+        g_obj_last_seq = hpcos_draw_seq;
+        hpcos_RequestCapture();
+        fprintf(stderr, "[OBJ] trace of the next frames, capture requested\n");
+    }
+    if (g_obj_frames && hpcos_draw_seq < g_obj_last_seq) {
+        g_obj_frames--;
+        fprintf(stderr, "[OBJ] ---- frame\n");
+    }
+    g_obj_last_seq = hpcos_draw_seq;
+    *seq0 = hpcos_draw_seq;
+}
+
+static void obj_trace_end(const char *fn, uint32_t obj, uint32_t seq0, uint32_t ret)
+{
+    if (!g_obj_frames || !obj) return;
+    float p[3];  /* a drawn object keeps its position at +0x14 (entity+0xAC points at it) */
+    memcpy(p, (const void *)XBOX_PTR(obj + 0x14), sizeof p);
+    fprintf(stderr, "[OBJ] %s obj %08X draws %u-%u flags %08X colour %08X d0 %08X model %08X from %08X pos %.2f %.2f %.2f\n",
+            fn, obj, seq0, hpcos_draw_seq, MEM32(obj + 0xE8), MEM32(obj + 0x114), MEM32(obj + 0xDC), MEM32(obj + 0x134),
+            ret, p[0], p[1], p[2]);
+    g_obj_last_seq = hpcos_draw_seq;
+}
+
+extern void sub_00031E20_gen(void);
+void sub_00031E20(void)
+{
+    uint32_t obj = MEM32(g_esp + 4), ret = MEM32(g_esp), seq0;
+    obj_trace_begin(&seq0);
+    sub_00031E20_gen();
+    obj_trace_end("31E20", obj, seq0, ret);
+}
+
+extern void sub_00020210_gen(void);
+void sub_00020210(void)
+{
+    uint32_t obj = MEM32(g_esp + 4), ret = MEM32(g_esp), seq0;
+    obj_trace_begin(&seq0);
+    sub_00020210_gen();
+    obj_trace_end("20210", obj, seq0, ret);
+}
+
+/* The music manager (0x1D3C20, EA PathFinder: a level's .mus/.mpf loaded by sub_0001CE70) switches with
+ * sub_0001C9B0(state, arg) (__thiscall, ret 8). In the Basilisk fight (level 25, Chamber of Secrets, phase word
+ * [0x527DFC] == 2) Harry picking up Gryffindor's sword asks for state 2 (0xD6992), the sword's theme, and dropping it
+ * for state 1 (0xD68DB), the fight's music, so the theme stops whenever the sword is put down. Once the theme has
+ * started it plays on, looping, for the rest of the fight: the switch back to 1 and every later state 2 (which would
+ * start the theme over) are left out; any other state (the fight's end, a cutscene, another level) goes through. RECOMP_SWORD_MUSIC=0 keeps the Xbox's switching.
+ * [MUSIC] logs every request: the state, its argument, the caller, the code above it, the level and the phase.
+ *
+ * A level script's request (opcode 84 of the interpreter sub_0006F010, returning to 0x7083B) for the state the manager
+ * is in already ([0x1D3C2C], set by each switch, -1 after a level's music loads) is left out: it starts that state's
+ * music over. The one known (2026-10-24): DADA
+ * Expelliarmus (level 1), the spell book's pickup asks for state 10, its jingle (0x87D71); closing the spell
+ * screen after it, the built-in script that asks for 10 again (0x1EC4C4, after the book's cutscene descriptor
+ * cs_bu) ran and the jingle played a second time. On the console (checked over xbdm) that request never comes; no
+ * other script in any log repeats the state playing. RECOMP_MUSIC_REPEAT=1 lets it through.
+ *
+ * The Entrance Hall (level 27, sub_000D82C0) and the Grand Staircase (level 29, sub_000FC450) switch music by distance
+ * in one part of the story: each frame, Harry within an object's radius (sub_000B3ED0: the object's property
+ * 0x100001B, radius at +0x38) asks for state 1, outside it for state 0 again. The object moves, so the music changed
+ * every few seconds with Harry standing still; the user asked for both gone (2026-10-24). The request for 1 is left
+ * out, and so is the one back to 0 when 0 is playing still (it would start it over); the levels' other cases (states 2
+ * and 3) are kept. Off by default since the same day: with the switching gone the hall's track played once and the
+ * music stopped. RECOMP_HALL_MUSIC=0 turns the removal on. */
+#define LEVEL_CHAMBER     25u
+#define PHASE_BASILISK    2u
+#define MUSIC_FIGHT       1u
+#define MUSIC_SWORD       2u
+
+static int hall_music_enabled(void)
+{
+    static int on = -1;
+    if (on < 0) {
+        const char *e = getenv("RECOMP_HALL_MUSIC");
+        on = !(e && *e == '0');
+    }
+    return on;
+}
+
+static int music_repeat_enabled(void)
+{
+    static int on = -1;
+    if (on < 0) {
+        const char *e = getenv("RECOMP_MUSIC_REPEAT");
+        on = e && *e == '1';
+    }
+    return on;
+}
+
+static int sword_music_enabled(void)
+{
+    static int on = -1;
+    if (on < 0) {
+        const char *e = getenv("RECOMP_SWORD_MUSIC");
+        on = !(e && *e == '0');
+    }
+    return on;
+}
+
+/* the Chamber's finale: the fight is won (level 25 asks for music state 4, 0xD6370) and the last cutscene plays, until
+ * the next music request (the next level's). Read by the renderer (d3d12.cpp DrawEyesShrunk: Riddle's eyes). */
+#define MUSIC_FIGHT_WON   4u
+volatile int hpcos_chamber_finale;
+
+extern void sub_0001C9B0_gen(void);
+void sub_0001C9B0(void)
+{
+    static int sword_heard;  /* the sword's theme has played in this fight */
+    uint32_t state = MEM32(g_esp + 4), arg = MEM32(g_esp + 8), ret = MEM32(g_esp);
+    uint32_t level = MEM32(0x00527B78), phase = MEM16(0x00527DFC);
+    int fight = level == LEVEL_CHAMBER && phase == PHASE_BASILISK;
+    if (!fight) sword_heard = 0;
+    int keep = fight && sword_heard && (state == MUSIC_FIGHT || state == MUSIC_SWORD) && sword_music_enabled();
+    int repeat = ret == 0x0007083Bu && MEM32(0x1D3C24) && MEM32(0x1D3C2C) == state && !music_repeat_enabled();
+    int hall = !hall_music_enabled() &&
+               ((level == 27u && (ret == 0x000D838Bu || (ret == 0x000D833Bu && MEM32(0x1D3C2C) == state))) ||
+                (level == 29u && (ret == 0x000FC584u || (ret == 0x000FC537u && MEM32(0x1D3C2C) == state))));
+    /* the title's return addresses on the stack above it (a call before each), to tell which code asked */
+    char script[160] = " chain";
+    for (uint32_t i = 1, n = 0, len = 6; i < 160 && n < 10; i++) {
+        uint32_t v = MEM32(g_esp + 4 * i);
+        if (v < 0x11005 || v >= 0x180000) continue;
+        if (MEM8(v - 5) != 0xE8 && MEM8(v - 2) != 0xFF && MEM8(v - 3) != 0xFF && MEM8(v - 6) != 0xFF) continue;
+        len += snprintf(script + len, sizeof script - len, " %05X", v);
+        n++;
+    }
+    fprintf(stderr, "[MUSIC] %lu state %u arg %u from %08X%s level %u phase %u%s\n", (unsigned long)GetTickCount(), state,
+            arg, ret, script, level, phase, keep ? " (left out: the sword's theme plays on)"
+            : repeat ? " (left out: a script asking for the state playing)"
+            : hall ? " (left out: the hall's music by distance)" : "");
+    if (keep || repeat || hall) {
+        g_esp += 12;  /* ret 8 */
+        return;
+    }
+    if (fight && state == MUSIC_SWORD) sword_heard = 1;
+    hpcos_chamber_finale = level == LEVEL_CHAMBER && state == MUSIC_FIGHT_WON;
+    sub_0001C9B0_gen();
+}
+
+/* [VASE] why a hit's animation didn't start: sub_0003CF20(block, -1, 0x5276B0) (from sub_0003D020) makes the player and
+ * gives 0 when the entry (block+0) has no data (+0x24) or bit 2 of its flags (+0x14) is set, when the animation
+ * (block+0x14) isn't among the entry's (sub_0003C600: data+0x34 records of 16 bytes from data+0x38 + data+0x38, the id
+ * first), when the player pool (sub_00039020(4), 0x51DF80) is out, or when sub_0003CE20 refuses the player. Only for
+ * calls from the box / vase update (sub_0003D020 returning to 0xD1B99). The generated bodies are renamed *_gen by hand */
+extern void sub_00039020_gen(void);
+static uint32_t g_last_player_alloc;
+void sub_00039020(void)
+{
+    sub_00039020_gen();
+    g_last_player_alloc = g_eax;
+}
+
+extern void sub_0003CF20_gen(void);
+
+/* an entry's animations (sub_0003C600's walk): data+0x34 records of 16 bytes from data+0x38 + [data+0x38], the id
+ * first; the index of id, or -1, and the count */
+static int entry_animation(uint32_t data, uint32_t id, int *count)
+{
+    *count = data ? (int32_t)MEM32(data + 0x34) : 0;
+    uint32_t base = data && MEM32(data + 0x38) ? data + 0x38 + MEM32(data + 0x38) : 0;
+    if (!base) *count = 0;
+    for (int i = 0; i < *count; i++)
+        if (MEM32(base + 16u * (uint32_t)i) == id) return i;
+    return -1;
+}
+
+/* A box whose model (level record +0x20 1000027D, on the Grand Staircase) lacks the lid animation its record asks
+ * for (B00001ED; it has only B0000276, which made the box vanish): the game's data, the lid never opened
+ * (2026-10-25). A box or vase whose model lacks the asked animation plays it from the first model in the table
+ * (0x1D3D80, 0x2D6 entries of 0x4C) that has it loaded: the other box model (1000027B), whose lid opens.
+ * RECOMP_BOX_ANIM=0: as the Xbox */
+void sub_0003CF20(void)
+{
+    uint32_t block = MEM32(g_esp + 4), outer = MEM32(g_esp + 0x10);
+    int ours = MEM32(g_esp) == 0x0003D031u && outer == 0x000D1B99u;
+    static int fix = -1;
+    if (fix < 0) {
+        const char *e = getenv("RECOMP_BOX_ANIM");
+        fix = !(e && e[0] == '0');
+    }
+    uint32_t entry = ours ? MEM32(block) : 0, data = entry ? MEM32(entry + 0x24) : 0, id = MEM32(block + 0x14);
+    int count;
+    if (fix && data && entry_animation(data, id, &count) < 0) {
+        for (uint32_t e = 0x1D3D80u, k = 0; k < 0x2D6; k++, e += 0x4C) {
+            uint32_t d = MEM32(e + 0x24);
+            int n;
+            if (e == entry || !d || (MEM32(e + 0x14) & 4) || entry_animation(d, id, &n) < 0) continue;
+            MEM32(block) = e;
+            fprintf(stderr, "[VASE]   model %08X has no animation %08X: played from model %08X\n", entry, id, e);
+            entry = e, data = d;
+            break;
+        }
+    }
+    g_last_player_alloc = 0xFFFFFFFFu;
+    sub_0003CF20_gen();
+    if (!ours || g_eax) return;
+    uint32_t flags = entry ? MEM32(entry + 0x14) : 0;
+    int found = entry_animation(data, id, &count);
+    const char *why = !entry || !data ? "the entry has no data" : (flags & 4) ? "the entry's flag bit 2 is set"
+                      : found < 0 ? "the animation isn't the entry's" : g_last_player_alloc == 0 ? "the player pool is out"
+                      : "sub_0003CE20 refused the player";
+    fprintf(stderr, "[VASE]   no player: %s | entry %08X flags %08X data %08X animation %08X, entry has %d\n", why,
+            entry, flags, data, id, count);
+}

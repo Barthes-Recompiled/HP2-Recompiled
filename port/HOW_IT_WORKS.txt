@@ -1,0 +1,219 @@
+HARRY POTTER AND THE CHAMBER OF SECRETS (XBOX) ON PC: HOW THE PORT WORKS
+=========================================================================
+Written 2026-10-14
+
+1. WHAT THE ORIGINAL XBOX GAME IS
+---------------------------------
+default.xbe is a Windows-like executable for the Xbox's CPU, a 733 MHz
+Pentium III (32-bit x86). It contains:
+
+  - The game's own code (.text, 0x11000-0x130620): Eurocom's engine,
+    written in C++ and compiled to x86.
+  - Microsoft's XDK libraries, linked in statically in their own sections:
+      D3D     Direct3D 8 for the Xbox GPU
+      DSOUND  DirectSound for the audio chip
+      XMV     the movie decoder
+      XPP     controllers / USB
+      XGRPH   texture helpers
+      XAPI    Win32-style file/thread functions (inside .text)
+  - Imports from the Xbox kernel (about 366 numbered functions: file I/O,
+    threads, memory, events).
+  - Data: vtables, constant tables, strings.
+
+On the console, the game calls Direct3D. Direct3D doesn't talk to any
+driver. It writes GPU commands ("methods") straight into a memory ring
+called the PUSH BUFFER, which the NV2A GPU (an nVidia chip close to a
+GeForce 3) reads by DMA. Likewise, DirectSound programs the MCPX audio chip
+directly through its registers. There's no OS layer in between, so
+everything is hardware-specific.
+
+
+2. STATIC RECOMPILATION: X86 -> C (THE CPU SIDE)
+------------------------------------------------
+xboxrecomp does NOT emulate the CPU instruction by instruction at run time.
+It translates the machine code once, ahead of time, into C, and a normal
+compiler builds that C into a native Windows .exe. The pipeline:
+
+  1. tools.disasm walks the code from the entry point and follows every
+     call and jump to find all functions. Indirect calls (vtables,
+     function-pointer tables) can't always be followed statically. They're
+     added by:
+       - scanning data for code pointers;
+       - seed lists (icall_seeds.json, now 173 entries);
+       - recording targets reached at run time.
+
+  2. tools.func_id matches functions against known library signatures, so
+     XDK code can be identified by name.
+
+  3. tools.abi_analysis works out each function's calling convention,
+     parameters and stack frame.
+
+  4. tools.recomp (the lifter) turns each x86 instruction into C.
+     For example:
+
+         add eax, [ebx+8]    becomes    eax = eax + MEM32(ebx + 8);
+
+       - Registers are C variables.
+       - Memory is one big array laid out like the Xbox's 64 MB, so guest
+         pointers stay valid.
+       - CPU flags are computed lazily: the operands are saved, and the
+         flag is only worked out when a later jump needs it. The "lost
+         flags" lifter fix ported from Nightfire was a bug in exactly this.
+       - x87 floating point becomes a small stack emulation (fp_push,
+         fp_top).
+       - SSE becomes C float maths. The cvtss2si rounding fix from
+         Nightfire was here.
+
+     The result is about 6,700 C functions named sub_<address> in
+     hpcos/src/recomp/gen/.
+
+  5. MinGW compiles all of it into hpcos.exe, and Wine runs it on Linux.
+
+The game's logic then runs natively on your PC's CPU, at full speed and
+with the same behaviour, because it's the same instructions translated
+faithfully. Anything the lifter gets subtly wrong becomes a game bug.
+Examples so far: the Lumos page, and the request lost between threads that
+caused the load hang (fixed by pinning all game threads to one core, as
+DefJam did).
+
+
+3. REPLACING THE HARDWARE: THREE LAYERS
+---------------------------------------
+The translated code still expects Xbox hardware and an Xbox kernel. It gets
+them in three ways:
+
+  - KERNEL BRIDGE (kernel_bridge.c and friends): each Xbox kernel import is
+    implemented on top of Win32. File opens map the Xbox D:\ drive to
+    game/, and threads, events and timers become Windows ones.
+
+  - HARDWARE EMULATION (MMIO): when the code touches GPU, audio or USB
+    registers, the access faults. A handler decodes the instruction
+    (mmio_decode.h) and emulates the device: NV2A registers, the APU, and
+    the OHCI USB controller.
+
+  - HLE (high-level emulation): instead of emulating the chip under a
+    library, the library function itself is replaced. It's the most
+    important layer:
+      - Any sub_X can be overridden with hand-written C/C++; the generated
+        version is kept as sub_X_gen for fallback.
+      - HP replaces 134 functions: about 90 Direct3D, 33 DirectSound, and
+        the XInput, XMV-overlay and rumble entry points.
+
+
+4. THE GPU SIDE
+---------------
+There are two ways to get the picture, and both exist in this codebase.
+
+(a) THE LOW-LEVEL ROUTE: EMULATE THE NV2A
+    Let Direct3D run as recompiled code, let it fill the push buffer, then
+    read the GPU methods back (nv2a_pb_exec.c) and redraw them.
+    xboxrecomp's original path, Burnout 3, JSRF and Nightfire work this
+    way. Nightfire keeps the method stream and replaces some D3D routines
+    with C that emits the same methods faster, then a D3D11 renderer
+    interprets the NV2A state. Our attempt at this ran at about 11 fps in
+    the Burrow, which is why we switched.
+
+(b) THE HIGH-LEVEL ROUTE (WHAT HP USES NOW): REPLACE DIRECT3D ITSELF
+    This is how the renderer this port builds on works (a Splinter Cell:
+    Double Agent recomp; hle_d3d8.cpp, gpu/d3d12.cpp).
+
+    1. The game calls something like SetRenderState(FOGENABLE, 1) or
+       DrawIndexedVertices(...). Our HLE takes the call and records the
+       state, and nothing goes to the emulated GPU.
+
+    2. At each draw, the renderer converts the Xbox state into D3D12,
+       which Wine runs on Vulkan through vkd3d:
+
+       - VERTEX SHADERS: the NV2A runs small vertex programs (about 136
+         instructions of its own format). These are decoded and rewritten
+         as HLSL (the vs_*.hlsl files in the captures).
+           * Xbox-specific behaviour has to be copied exactly. One example
+             is xrcc (reciprocal with clamping).
+           * Another is that the game does its own perspective divide
+             inside the shader, outputting screen pixels. We have to
+             rebuild proper clip space from that, which is the "epilogue"
+             where the fog bug was.
+
+       - PIXEL SHADERS: the NV2A has no real pixel shaders. It has
+         REGISTER COMBINERS, a fixed pipeline of multiply-add stages.
+         Those are generated into HLSL too.
+
+       - FIXED-FUNCTION DRAWS (no game shader): transform, lighting,
+         texture-coordinate generation and fog are generated as HLSL from
+         the render states.
+
+       - TEXTURES: Xbox textures are swizzled (Morton order) and sometimes
+         in formats PCs lack, such as R5G6B5 render targets with no alpha.
+         They're unswizzled and converted, then cached by address and
+         content hash. The ground-shader alpha bug (NoAlpha -> alpha 1)
+         lived here.
+
+       - DEPTH: the Xbox supports W-BUFFERING (storing linear distance
+         instead of z/w), which PC GPUs don't have. We emulate it by
+         having the pixel shader write its own depth. The open
+         draw-distance issue is in this area, and it's where Nightfire's
+         approach differs from ours.
+
+       - RENDER TARGETS, such as the shadow texture: these become real
+         D3D12 textures, upscaled to the internal resolution.
+
+    3. Swap ends the frame. The renderer resolves MSAA, runs SMAA if it's
+       on, applies gamma, brightness, contrast and HDR10, and draws the
+       F10 menu.
+
+Since D3D12 now draws at native speed, you get 60 fps at 1080p, and the
+upscaling, MSAA, anisotropic filtering and HDR output all come for free.
+The cost: every Xbox-specific GPU behaviour has to be reproduced by hand in
+the HLSL generator. When one is wrong, you see exactly the kind of bugs
+we're chasing: missing ground, wrong depth range, beams only visible up
+close.
+
+
+5. AUDIO, INPUT, MOVIES
+-----------------------
+  - AUDIO: the DirectSound HLE (ported from the same project as the renderer) mixes each voice on
+    XAudio2 instead of emulating the MCPX DSP.
+  - INPUT: the XInput HLE (as that project does it) reads your PC pad directly. Rumble
+    (the washing-machine freeze) is answered on the host.
+  - MOVIES: the XMV decoder itself runs as recompiled code, since it's
+    plain CPU work. Its output is shown through our overlay HLE, because
+    on the console it uses a video-overlay hardware unit.
+
+
+6. HOW THE OTHER RECOMPS FIT
+----------------------------
+HP:CoS (ours)
+    CPU: xboxrecomp static lift -> C
+    GPU: D3D8 HLE -> D3D12 (src/renderer)
+
+The renderer's original project (TGP482, Joshhhuaaa)
+    CPU: TGP482's own lifter (Xbox-XBERecomp)
+    GPU: D3D8 HLE -> D3D12. Our renderer base, but XDK 5849 vs our 5028,
+         so structure offsets had to be re-derived.
+
+Nightfire (Eurocom, same studio)
+    CPU: static lift + hand fixes (lost flags, cvtss2si, sahf)
+    GPU: keeps NV2A methods; replaces some D3D routines with native C;
+         D3D11 renderer. Its W-buffer w/zmax is the reference for our depth
+         problem.
+
+DefJam FFNY
+    CPU: xboxrecomp-family
+    Ported fix: pin all guest threads to one core.
+
+JSRF, Conker, Burnout 3
+    CPU: xboxrecomp
+    GPU: NV2A push-buffer -> D3D11, plus D3D8-boundary experiments.
+
+DOAXBV
+    CPU: rewritten natively, not lifted
+    GPU: native renderer
+
+Most bugs belong to one of these layers:
+  - a lifter mistake (wrong CPU result),
+  - a missing indirect-call target (crash or garbage),
+  - a missing hardware or library behaviour (hang),
+  - a GPU translation difference (visual).
+
+The recomps are useful because each has already fixed some of these for
+the same XDK, and that's why we check them first.
