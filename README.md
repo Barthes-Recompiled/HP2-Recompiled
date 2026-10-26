@@ -17,9 +17,15 @@ Features beyond the original:
 **This repository contains no game content.** To play or build it you need the files from your own copy of the
 Xbox disc. The build regenerates the recompiled code from your `default.xbe`.
 
+## Which disc
+
+**Only the North American (NTSC-U) release works.** Its `default.xbe` has region 1 (North America) and a build
+date of 17 October 2002 in its certificate. The European/PAL release (region 4, built 18 October 2002) contains
+the same game, but its code sits at different addresses, so this build can't run it. A PAL build may come later.
+
 ## Playing
 
-Download the latest release, put your disc's files or the .xiso in a `game` folder beside the executables and
+Download the latest release, put your NTSC-U disc's files or the .xiso in a `game` folder beside the executables and
 start `hpcos_launcher.exe`. Requirements, controls and every option are in [port/README.txt](port/README.txt);
 what changed in each release is in [port/CHANGES.md](port/CHANGES.md).
 
