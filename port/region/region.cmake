@@ -3,6 +3,8 @@
 # src/recomp/region/ with a stamp, region.cmake there, naming the profile and the copied sources. When that stamp
 # exists, every target here compiles the copies instead of the originals; otherwise nothing changes.
 # Include this at the end of CMakeLists.txt, after the last target.
+# src/region_check.c logs once, as Harry first stands in a level, whether the state the overrides read is sane.
+target_sources(${PROJECT_NAME} PRIVATE src/region_check.c)
 set(REGION_OUT "${CMAKE_CURRENT_SOURCE_DIR}/src/recomp/region")
 # globbed so that regen.sh adding or removing the stamp re-runs the configure
 file(GLOB REGION_STAMP CONFIGURE_DEPENDS "${REGION_OUT}/region.cmake")
@@ -11,6 +13,7 @@ if(REGION_STAMP)
     include("${REGION_STAMP}")  # REGION_PROFILE, REGION_SHA1, REGION_FILES (paths relative to this folder)
     list(LENGTH REGION_FILES _region_n)
     message(STATUS "Region: ${REGION_PROFILE} (XBE sha1 ${REGION_SHA1}), ${_region_n} sources from src/recomp/region")
+    target_compile_definitions(${PROJECT_NAME} PRIVATE "REGION_PROFILE=\"${REGION_PROFILE}\"")
     get_property(_region_targets DIRECTORY PROPERTY BUILDSYSTEM_TARGETS)
     foreach(_t IN LISTS _region_targets)
         get_target_property(_srcs ${_t} SOURCES)
