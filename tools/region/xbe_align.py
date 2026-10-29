@@ -541,6 +541,8 @@ def main(argv=None):
     g.add_argument("--map", help="map from the canonical XBE to this profile's XBE")
     g.add_argument("--canonical", metavar="XBE", help="the XBE the sources are written for")
     p.add_argument("--explicit", help="JSON list of explicit {from, to, kind, name, confidence, why} entries")
+    p.add_argument("--extra-seeds", help="JSON list of {start, why}: icall seeds this XBE needs for the same "
+                   "function boundaries as the canonical one")
     p.add_argument("-o", "--output", required=True)
     p = sub.add_parser("addrs", help="map the guest addresses used in source files")
     p.add_argument("--map", required=True)
@@ -574,6 +576,9 @@ def main(argv=None):
             if a.explicit:
                 with open(a.explicit) as f:
                     prof["explicit"] = json.load(f)
+            if a.extra_seeds:
+                with open(a.extra_seeds) as f:
+                    prof["extra_seeds"] = json.load(f)
         with open(a.output, "w", newline="\n") as f:
             json.dump(prof, f, indent=1)
             f.write("\n")

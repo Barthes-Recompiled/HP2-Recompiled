@@ -742,5 +742,11 @@
    "confidence": "high",
    "why": "icall seed; .data slot 0x1E9950 -> 0x1E9BA0 holds 0x66220; code shape 13/13"
   }
+ ],
+ "extra_seeds": [
+  {
+   "start": "0x000C0211",
+   "why": "USA's disassembly starts a function at 0xC0001 (sub_000C0001, patched by patch_gen.py) because the constant 0x000C0001 in its .data table at 0x1E8E40 looks like a pointer; EUR's table holds the same constant, so its copy of that code (0xC0211) gets no function of its own without this seed"
+  }
  ]
 }

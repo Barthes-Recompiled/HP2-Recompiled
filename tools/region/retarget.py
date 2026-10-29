@@ -38,6 +38,10 @@ NAME_RE = re.compile(r"(?:(?<=sub_)|(?<=loc_))([0-9A-Fa-f]{8})(?![0-9A-Za-z])")
 HEX_RE = re.compile(r"(?<![\w.])0([xX])([0-9A-Fa-f]{5,8})(?=[uUlL]*(?![\w.]))")
 C_TOK = re.compile(r'//[^\n]*|/\*.*?\*/|"(?:\\.|[^"\\\n])*"|\'(?:\\.|[^\'\\\n])*\'', re.S)
 PY_TOK = re.compile(r'#[^\n]*|""".*?"""|\'\'\'.*?\'\'\'|"(?:\\.|[^"\\\n])*"|\'(?:\\.|[^\'\\\n])*\'', re.S)
+# a macro that pastes a parameter into a name, e.g. #define FALLBACK(addr) ... sub_##addr##_gen(): the bare
+# 8 hex digit arguments it is called with are addresses too
+DEFINE_RE = re.compile(r"^[ \t]*#[ \t]*define[ \t]+(\w+)\(([^)]*)\)((?:[^\n]*\\\r?\n)*[^\n]*)", re.M)
+BARE_HEX = re.compile(r"(?<!\w)[0-9A-Fa-f]{8}(?!\w)")
 INCLUDE_RE = re.compile(r'^[ \t]*#[ \t]*include[ \t]*"([^"]+)"', re.M)
 IMAGE_START = 0x11000  # below this (header, small numbers) nothing is retargeted
 
@@ -58,6 +62,9 @@ class Profile:
                            key=lambda s: s["start"])
         self.starts = [s["start"] for s in self.segs]
         self.explicit = {h(e["from"]): h(e["to"]) for e in p.get("explicit", [])}
+        # functions the canonical XBE's disassembly finds by a coincidence (a constant that looks like a
+        # pointer) that this XBE's would not: seeded so both get the same function boundaries
+        self.extra_seeds = [h(e["start"]) for e in p.get("extra_seeds", [])]
 
     def map(self, v):
         """(new value, how) or (None, why)."""
@@ -118,6 +125,57 @@ class Retarget:
         """Round values and masks: as likely a size or flag as an address, so a person decides."""
         return v % 0x100 == 0 or bin(v).count("1") <= 2
 
+    def paste_macros(self, texts):
+        """{macro name: index of a parameter it pastes into sub_/loc_} over all scanned files."""
+        self.macros = {}
+        defs = [(name, [x.strip() for x in params.split(",")], body)
+                for t in texts.values() for name, params, body in DEFINE_RE.findall(t)]
+        for name, ps, body in defs:
+            for i, prm in enumerate(ps):
+                if prm and re.search(r"(?:sub|loc)_##\s*%s\b" % re.escape(prm), body):
+                    self.macros[name] = i
+        # and macros that hand a parameter on to one, e.g. COMPLEX_STATE(addr, rs) -> HLE(addr, 1)
+        grew = True
+        while grew:
+            grew = False
+            for name, ps, body in defs:
+                if name in self.macros:
+                    continue
+                for inner, idx in list(self.macros.items()):
+                    for m in re.finditer(r"\b%s\s*\(" % re.escape(inner), body):
+                        args = body[m.end():].split(")")[0].split(",")
+                        if idx < len(args) and args[idx].strip() in ps:
+                            self.macros[name] = ps.index(args[idx].strip())
+                            grew = True
+                            break
+                    if name in self.macros:
+                        break
+
+    def macro_args(self, text):
+        """Match-like (start, digits) for each bare address argument of a paste macro."""
+        out = []
+        for name, idx in getattr(self, "macros", {}).items():
+            for m in re.finditer(r"\b%s\s*\(" % re.escape(name), text):
+                pos, depth, arg, start = m.end(), 0, 0, m.end()
+                while pos < len(text):
+                    c = text[pos]
+                    if c in "([{":
+                        depth += 1
+                    elif c in ")]}" and depth:
+                        depth -= 1
+                    elif c in ",)" and not depth:
+                        if arg == idx:
+                            a = text[start:pos]
+                            mm = re.fullmatch(r"\s*([0-9A-Fa-f]{8})\s*", a)
+                            if mm:
+                                out.append((start + mm.start(1), mm.group(1)))
+                            break
+                        if c == ")":
+                            break
+                        arg, start = arg + 1, pos + 1
+                    pos += 1
+        return out
+
     def rewrite(self, rel, text):
         """Returns (new text, number of literals changed); records failures."""
         path = pathlib.Path(rel)
@@ -129,9 +187,19 @@ class Retarget:
             i = bisect.bisect_right(starts, pos) - 1
             return i >= 0 and pos < spans[i][1]
 
+        class Hit:  # a macro argument, shaped like a NAME_RE match
+            def __init__(self, a, d):
+                self.a, self.d = a, d
+
+            def start(self, g=0):
+                return self.a
+
+            def group(self, g):
+                return self.d
         edits = []
-        for rx, is_name in ((NAME_RE, True), (HEX_RE, False)):
-            for m in rx.finditer(text):
+        for rx, is_name in ((NAME_RE, True), (HEX_RE, False), (None, True)):
+            hits = rx.finditer(text) if rx else [Hit(a, d) for a, d in self.macro_args(text)]
+            for m in hits:
                 digits = m.group(1) if is_name else m.group(2)
                 v = int(digits, 16)
                 if not is_name and not IMAGE_START <= v < self.prof.image_end:
@@ -195,8 +263,9 @@ class Retarget:
 
     def run(self):
         texts, changed = {}, {}
-        for rel in self.files():
-            text = read(self.port / rel)
+        originals = {rel: read(self.port / rel) for rel in self.files()}
+        self.paste_macros(originals)
+        for rel, text in originals.items():
             new, n = self.rewrite(rel, text)
             texts[rel] = new
             if n:
@@ -218,7 +287,16 @@ def read(path):
 
 
 def blank_literals(text):
-    return HEX_RE.sub("0x#", NAME_RE.sub("#", text))
+    return BARE_HEX.sub("#", HEX_RE.sub("0x#", NAME_RE.sub("#", text)))
+
+
+def append_seeds(text, starts):
+    """Add {"start": ...} entries to icall_seeds.json's list, in the file's own layout."""
+    nl = "\r\n" if "\r\n" in text else "\n"
+    end = text.rstrip().rfind("]")
+    body = text[:end].rstrip()
+    add = "".join("," + nl + " {" + nl + '  "start": "0x%08X"' % a + nl + " }" for a in starts)
+    return body + add + nl + text[end:]
 
 
 def remove_out(out):
@@ -269,6 +347,11 @@ def main(argv=None):
         orig = read(port / rel)
         if blank_literals(orig) != blank_literals(texts[rel]):
             sys.exit("retarget: internal error: %s changed outside address literals" % rel)
+    if prof.extra_seeds:
+        rel = "icall_seeds.json"
+        texts[rel] = append_seeds(texts[rel], prof.extra_seeds)
+        if rel not in copy:
+            copy.append(rel)
     remove_out(out)
     for rel in copy:
         dst = out / rel
@@ -283,6 +366,9 @@ def main(argv=None):
     s = rt.stats
     print("retarget: %s (%s): %d files written (%d with rewritten literals, %d for their includes)" % (
         prof.name, prof.sha1, len(copy), len(changed), len(copy) - len(changed)))
+    if prof.extra_seeds:
+        print("retarget: %d extra icall seed(s): %s" % (len(prof.extra_seeds),
+              " ".join("0x%08X" % a for a in prof.extra_seeds)))
     print("retarget: literals rewritten: %d in code, %d in comments (%d of them sub_/loc_ names); "
           "%d listed plain numbers kept; %d left in comments (unmappable or number-like)" % (
               s["code"], s["comment"], s["names"], s["numbers"], s["comment_left"]))
