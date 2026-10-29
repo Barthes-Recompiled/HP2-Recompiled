@@ -1,0 +1,42 @@
+# Region retargeting (tools/region/README.md). The hand-written sources are written in the canonical XBE's guest
+# addresses. For another supported XBE, regen.sh (tools/region/retarget.py) writes retargeted copies to
+# src/recomp/region/ with a stamp, region.cmake there, naming the profile and the copied sources. When that stamp
+# exists, every target here compiles the copies instead of the originals; otherwise nothing changes.
+# Include this at the end of CMakeLists.txt, after the last target.
+set(REGION_OUT "${CMAKE_CURRENT_SOURCE_DIR}/src/recomp/region")
+# globbed so that regen.sh adding or removing the stamp re-runs the configure
+file(GLOB REGION_STAMP CONFIGURE_DEPENDS "${REGION_OUT}/region.cmake")
+if(REGION_STAMP)
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${REGION_STAMP}")
+    include("${REGION_STAMP}")  # REGION_PROFILE, REGION_SHA1, REGION_FILES (paths relative to this folder)
+    list(LENGTH REGION_FILES _region_n)
+    message(STATUS "Region: ${REGION_PROFILE} (XBE sha1 ${REGION_SHA1}), ${_region_n} sources from src/recomp/region")
+    get_property(_region_targets DIRECTORY PROPERTY BUILDSYSTEM_TARGETS)
+    foreach(_t IN LISTS _region_targets)
+        get_target_property(_srcs ${_t} SOURCES)
+        if(NOT _srcs)
+            continue()
+        endif()
+        set(_new "")
+        foreach(_s IN LISTS _srcs)
+            cmake_path(ABSOLUTE_PATH _s BASE_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}" OUTPUT_VARIABLE _abs)
+            file(RELATIVE_PATH _rel "${CMAKE_CURRENT_SOURCE_DIR}" "${_abs}")
+            if(_rel IN_LIST REGION_FILES)
+                set(_copy "${REGION_OUT}/${_rel}")
+                # the original's compile settings, plus its folder for includes relative to it
+                foreach(_p COMPILE_OPTIONS COMPILE_DEFINITIONS INCLUDE_DIRECTORIES)
+                    get_source_file_property(_v "${_s}" ${_p})
+                    if(_v)
+                        set_property(SOURCE "${_copy}" PROPERTY ${_p} "${_v}")
+                    endif()
+                endforeach()
+                cmake_path(GET _abs PARENT_PATH _dir)
+                set_property(SOURCE "${_copy}" APPEND PROPERTY INCLUDE_DIRECTORIES "${_dir}")
+                list(APPEND _new "${_copy}")
+            else()
+                list(APPEND _new "${_s}")
+            endif()
+        endforeach()
+        set_property(TARGET ${_t} PROPERTY SOURCES "${_new}")
+    endforeach()
+endif()

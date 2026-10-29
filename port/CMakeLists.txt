@@ -287,3 +287,6 @@ if(WIN32)
     target_link_options(hpcos_launcher PRIVATE -static -static-libgcc -static-libstdc++ -mwindows)
     target_link_libraries(hpcos_launcher PRIVATE d3d11 dxgi d3dcompiler ole32 imm32 dwmapi gdi32 xinput1_4)
 endif()
+
+# Region retargeting: compile src/recomp/region/ copies when regen.sh made them for a non-canonical XBE
+include(region/region.cmake)
