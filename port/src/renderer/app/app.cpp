@@ -77,6 +77,8 @@ const Entry kEntries[] = {
      "renderer debug keys: F7 depth test always passes, F8 log depth for all draws, F9 alpha test off"},
     {"draw_all_objects", "RECOMP_DRAW_ALL", Kind::Bool, FIELD(draw_all), 0, 0,
      "draw every object in the camera's view, also those a room seen through a doorway or arch would leave out (parts of the library); false as the Xbox"},
+    {"broom_free_flight", "RECOMP_BROOM_FREE_FLIGHT", Kind::Bool, FIELD(broom_free_flight), 0, 0,
+     "on the Hogwarts grounds the broom lands anywhere over the ground, not only on the landing pads (as on the PS2); false as the Xbox"},
     {"speakers", "RECOMP_SPEAKERS", Kind::U32, FIELD(speakers), 2, 6,
      "2 stereo, 6 5.1 surround (the console's speaker mix, each channel to its own speaker); takes a restart"},
     {"colorblind", nullptr, Kind::ColorBlind, FIELD(colorblind), 0, 0,
@@ -463,6 +465,7 @@ extern "C" int app_Speakers(void) { return app::Get().speakers == 6 ? 6 : 2; }
 // main.c, first thing: the settings read, and handed to the C side (the window, the title's widescreen camera, the
 // pushbuffer path) as the RECOMP_* variables it reads, before any thread starts
 extern "C" int app_DrawAll(void) { return app::Get().draw_all; }
+extern "C" int app_BroomFreeFlight(void) { return app::Get().broom_free_flight; }
 
 extern "C" void hpcos_SettingsInit(void) {
     const app::Settings& s = app::Get();
