@@ -25,9 +25,16 @@ catalog = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(catalog)
 
 HEAP, LIMIT, STRIDE = 0x80000000, 0x84000000, 0x370
-# These are grant/update functions, as requested. Some may be callbacks rather
-# than +70 handlers in a particular level: a zero result is not proof of absence.
-HANDLERS = {0x75010: "inline", 0x75A20: "inline", 0xD1C10: "inline",
+# The entity array keeps each object's INITIALIZER at +0x70 (seen live 2026-10-30: a Borgin and Burkes chest, GEO
+# type 0x50000009, is an entity with handler 0x85800, its initializer; the update 0x85990 is never there). Every
+# initializer reads the GEO record's item from the level record at [E+0xA8]+0x24 (L+0x24 in
+# research/cos_objects_report.md); most copy it on to [E+0xC0]+0x14, but 0x75F50 (type 0x50000022) hands it straight
+# to the pickup spawner sub_00075340 (recomp_0001.c:144867-144874), so the level record is the one source that holds
+# for all of them: the "level" source. The grant/update functions stay in case a level stores those instead.
+HANDLERS = {0x85800: "level", 0x881C0: "level", 0x86E90: "level", 0x75F50: "level", 0x874D0: "level",
+            0x828B0: "equipment", 0xEC100: "level", 0x85C20: "level", 0x85E50: "level", 0x80070: "level",
+            0x86080: "level", 0x86360: "level",
+            0x75010: "inline", 0x75A20: "inline", 0xD1C10: "inline",
             0x80A00: "record", 0x82A90: "record", 0x828F0: "equipment",
             0x87CE0: "record", 0x92010: "interaction", 0xEC200: "record"}
 
@@ -114,6 +121,12 @@ def item_id(t, ent, handler):
         return item if item else None
     if source == "equipment":
         return 0x4002
+    if source == "level":
+        level_rec = struct.unpack_from("<I", ent, 0xA8)[0]
+        if not heap_ptr(level_rec, 0x28):
+            return None
+        item = t.u32(level_rec + 0x24) & 0xFFFF
+        return item if item else None
     if source == "interaction":
         player = t.u32(0x530408)
         obj = t.u32(player + 0xAC) if player and heap_ptr(player, 0xB0) else None

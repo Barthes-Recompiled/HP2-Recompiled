@@ -125,3 +125,15 @@ suppression of bridge-delivered cards. It does not execute generated game code.
 `regen.sh` and CMake's regeneration comment include `hle_ap.c` in
 `--exclude-manual`; the existing local generated body was renamed by hand for
 this build. Generated files and research are deliberately not committed.
+
+## The committed rows (2026-10-30)
+
+`port/ap/pickups.tsv` is `tools/cos_pickups.py <game dir> port/ap/pickups.tsv`: the placed pickups read from the
+user's own level files, as numbers only (level, record type, item id, position). `catalog.json` is
+`make_catalog.py --census port/ap/pickups.tsv`, and `test_ap_census.py` checks that the two still agree. Rebuild
+both together; a changed catalog has a new version hash and refuses older slots.
+
+Live (2026-10-30, spot-by-spot with the controller): chest rows of type `0x50000009` fired their checks in Borgin and
+Burkes (0x3003, 0x3009), the Burrow (card 0x203B) and the Leaky Cauldron (card 0x201B), each matched within a unit.
+The entity array holds each object's initializer (0x85800 for that type), which is why the first sweep saw nothing;
+`ap_census.py` now keys on the initializers and reads the item from the level record at `[E+0xA8]+0x24`.

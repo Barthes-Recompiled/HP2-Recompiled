@@ -41,9 +41,14 @@ class CensusTests(unittest.TestCase):
     def test_all_item_sources(self):
         t = Memory()
         t.put(0x80020014, struct.pack("<I", 0x7004))
+        # the level record an initializer reads (L+0x24), with its item in the low half; the fixture's +0xA8 points
+        # at it only for the "level" source, the others keep the deliberately wrong one
+        t.put(0x80060024, struct.pack("<I", 0x0004_2062))
         for handler, source in census.HANDLERS.items():
             with self.subTest(handler=hex(handler)):
                 ent = entity(handler, 0x2001, rec=0x80020000)
+                if source == "level":
+                    struct.pack_into("<I", ent, 0xA8, 0x80060000)
                 if source == "interaction":
                     t.put(0x530408, struct.pack("<I", 0x80030000))
                     t.put(0x800300AC, struct.pack("<I", 0x80040000))
@@ -53,7 +58,7 @@ class CensusTests(unittest.TestCase):
                     t.put(0x8004001C, struct.pack("<I", 0))
                     expected = 0x6000
                 else:
-                    expected = {"inline": 0x2001, "record": 0x7004, "equipment": 0x4002}[source]
+                    expected = {"inline": 0x2001, "record": 0x7004, "equipment": 0x4002, "level": 0x2062}[source]
                 self.assertEqual(census.item_id(t, ent, handler), expected)
 
     def test_heap_after_hole_and_array_dedup(self):
@@ -95,9 +100,12 @@ class CensusTests(unittest.TestCase):
 
 
 class CatalogTests(unittest.TestCase):
-    def test_default_unchanged(self):
-        current = json.loads((Path(__file__).parents[1] / "ap/catalog.json").read_text())
-        self.assertEqual(census.catalog.build(), current)
+    def test_committed_catalog_reproducible(self):
+        # the committed catalog is the census build from the committed pickup rows (cos_pickups.py's output; numbers
+        # only), so the same rows must give the same catalog: the IDs players' slots are made from
+        ap = Path(__file__).parents[1] / "ap"
+        current = json.loads((ap / "catalog.json").read_text())
+        self.assertEqual(census.catalog.build(ap / "pickups.tsv"), current)
 
     def test_census_identity_metadata_and_rewards(self):
         with tempfile.TemporaryDirectory() as tmp:
