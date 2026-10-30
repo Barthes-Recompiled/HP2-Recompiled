@@ -51,6 +51,8 @@ extern "C" {
 
 using Microsoft::WRL::ComPtr;
 
+extern "C" int hpcos_FastForward(void);  // hle_skip.c: a cutscene fast-forwarding (1 when not)
+
 namespace gpu {
 
 namespace {
@@ -4834,6 +4836,8 @@ void D3D12Backend::Present(const Surface& front, bool pillarbox) {
         [](const XboxPresentInfo* pi, void* on) { *static_cast<bool*>(on) = pi->ov_on != 0; }, &movie);
     bool empty_frame = g_ls_draws == 0 && !movie && now_t < ls_until;
     bool hold = (skipped_frame_ || empty_frame) && shown_ && now_t - shown_t_ < kHoldMax;
+    // xboxrecomp: a cutscene fast-forwarding (hle_skip.c) shows a frame every quarter of a second, no more
+    const bool ff_hold = hpcos_FastForward() > 1 && shown_ && now_t - shown_t_ < std::chrono::milliseconds(250);
     {   // xboxrecomp: [LEVELSTART] what each frame held in the level-start window: a frame showing only the clear
         // colour has few draws, one with draws skipped for pipelines says so
         static uint32_t last_draws = 0xFFFFFFFFu;
@@ -4863,12 +4867,12 @@ void D3D12Backend::Present(const Surface& front, bool pillarbox) {
     uint32_t bi = swap_->GetCurrentBackBufferIndex();
     LogCopies();
     GpuTimestamp(1);
-    if (!hold) DrawFrame(t, pillarbox, bi);
+    if (!hold && !ff_hold) DrawFrame(t, pillarbox, bi);
     GpuTimestamp(2);
     auto perf_t1 = std::chrono::steady_clock::now();
     Submit(false);
     auto perf_t2 = std::chrono::steady_clock::now();
-    if (!hold) {
+    if (!hold && !ff_hold) {
         bool vsync = app::Get().vsync;
         auto pt0 = std::chrono::steady_clock::now();
         HRESULT hr = swap_->Present(vsync ? 1 : 0, !vsync && tearing_ ? DXGI_PRESENT_ALLOW_TEARING : 0);

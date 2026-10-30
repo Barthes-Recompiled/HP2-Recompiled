@@ -43,6 +43,7 @@ extern __thread uint32_t g_eax, g_ecx, g_edx, g_esp;
 extern __thread uint32_t g_ebx, g_esi, g_edi;
 typedef void (*recomp_func_t)(void);
 recomp_func_t recomp_lookup(uint32_t xbox_va);
+int hpcos_FastForward(void);  // hle_skip.c: a cutscene fast-forwarding (1 when not)
 }
 
 using namespace kernel;
@@ -200,6 +201,7 @@ void Pace() {
     if (!freq.QuadPart) QueryPerformanceFrequency(&freq);
     // xboxrecomp: the title's own present interval (the 30 fps cap that doubled it was removed)
     LONGLONG period = freq.QuadPart * 1001 / 60000 * std::max<uint32_t>(g_interval, 1u);
+    period /= hpcos_FastForward();  // xboxrecomp: a cutscene fast-forwarding (hle_skip.c) steps that many times as often
     QueryPerformanceCounter(&now);
     if (!next.QuadPart || now.QuadPart - next.QuadPart > 4 * period) next.QuadPart = now.QuadPart;
     while (now.QuadPart < next.QuadPart) {
@@ -524,6 +526,7 @@ HLE(00135760, 3) {
 
 // D3DDevice_BlockUntilVerticalBlank
 HLE(00133010, 0) {
+    if (hpcos_FastForward() > 1) return 0;  // xboxrecomp: a cutscene fast-forwarding (hle_skip.c)
     Sleep(16);
     return 0;
 }

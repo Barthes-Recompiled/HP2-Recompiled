@@ -296,6 +296,8 @@ static void ResetPage(Settings& s, const char* page) {
     }
     if (!std::strcmp(page, "Gameplay")) {
         std::memcpy(&s.broom_free_flight, &d.broom_free_flight, sizeof(s.broom_free_flight));
+        std::memcpy(&s.cutscene_skip, &d.cutscene_skip, sizeof(s.cutscene_skip));
+        std::memcpy(&s.intro_skip, &d.intro_skip, sizeof(s.intro_skip));
     }
     if (!std::strcmp(page, "Accessibility")) {
         std::memcpy(&s.colorblind, &d.colorblind, sizeof(s.colorblind));
@@ -433,6 +435,11 @@ void DrawPanel(bool start) {
     }
     if (tabs && ImGui::BeginTabItem("Gameplay")) {
         page = "Gameplay";
+        Row("Cutscenes");
+        if (ImGui::Checkbox("Hold Start or Back to fast-forward a cutscene", &s.cutscene_skip)) Changed();
+        ImGui::TextDisabled("Runs it to its own end, muted and with the picture held, so nothing it sets up is missed.");
+        if (ImGui::Checkbox("Skip the logos at start-up", &s.intro_skip)) Changed();
+        ImGui::TextDisabled("The EA and Warner Bros. logo movies; takes effect at the next start.");
         Row("Broom");
         if (ImGui::Checkbox("Land the broom anywhere on the grounds", &s.broom_free_flight)) Changed();
         ImGui::TextDisabled("Gets off the broom over any ground, as on the PS2; off, only on the landing pads (the Xbox).");

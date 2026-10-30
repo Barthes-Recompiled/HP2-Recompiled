@@ -86,6 +86,8 @@ set(GAME_SOURCES
     src/hle_fade.c
     # The broom lands anywhere over ground on the Hogwarts grounds (hpcos.toml broom_free_flight; off = Xbox).
     src/hle_broom.c
+    # Holding Start/Back fast-forwards a cutscene (hpcos.toml cutscene_skip; false = Xbox).
+    src/hle_skip.c
     # No chest sound for chests a level load puts back open (RECOMP_CHEST_LOAD_SOUND=1 = Xbox behaviour).
     src/hle_switch.c
     # The title's 2D sprites, placed for true 16:9.
@@ -111,6 +113,7 @@ set(GAME_SOURCES
     #   --exclude-manual ../hpcos/src/hle_gringotts.c
     #   --exclude-manual ../hpcos/src/hle_fade.c
     #   --exclude-manual ../hpcos/src/hle_broom.c
+    #   --exclude-manual ../hpcos/src/hle_skip.c
     #   --exclude-manual ../hpcos/src/hle_switch.c
     #   --exclude-manual ../hpcos/src/hle_trainer.c
     #   --exclude-manual ../hpcos/src/hle_frontend.c

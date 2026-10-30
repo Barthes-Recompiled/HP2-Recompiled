@@ -61,6 +61,8 @@ struct Settings {
     bool audio_trace = false;          // xboxrecomp: F10 Debug: [DSOUND] lines for each sound (not saved)
     bool debug_keys = false;           // xboxrecomp: F7/F8/F9 renderer debug keys (also RECOMP_DEBUG_KEYS)
     bool draw_all = true;              // xboxrecomp: objects tested against the camera's view, not a room's portal (hle_debug.c over sub_00034950)
+    bool intro_skip = true;            // xboxrecomp: the start-up logo movies are left out (hle_video.c)
+    bool cutscene_skip = true;         // xboxrecomp: holding Start/Back fast-forwards a cutscene to its end (hle_skip.c)
     bool broom_free_flight = false;    // xboxrecomp: land the broom anywhere over ground on the grounds (hle_broom.c over sub_0002D3E0)
     uint32_t colorblind = 0;           // ColorBlind: correction filter over the finished frame
     uint32_t colorblind_strength = 100;  // 0 to 100 %

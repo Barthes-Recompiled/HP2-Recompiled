@@ -337,3 +337,21 @@ void hpcos_WideAspectTick(void)
     MEMF(0x0050C1D4 + 4) = side;
     fprintf(stderr, "[WIDESCREEN] back in the game with the 4:3 screen's aspect left: %.4f put back\n", wide);
 }
+
+/* sub_00018D40(name, .), cdecl: plays a movie to its end. intro_skip leaves out the start-up logos, the EA logo
+ * (D:\ea_logo_<language>.xmv, from sub_000FFC20) and Warner Bros.' (D:\warner.xmv, from the front end
+ * sub_000FFE60); the Harry Potter intro (D:\hp<language>x.xmv) and every other movie play as always. */
+extern int app_IntroSkip(void);  /* hpcos.toml intro_skip (renderer/app/app.cpp) */
+extern void sub_00018D40_gen(void);
+void sub_00018D40(void)
+{
+    uint32_t name = ARG(0);
+    const char *n = name ? (const char *)XBOX_PTR(name) : "";
+    if (app_IntroSkip() && (!_strnicmp(n, "D:\\ea_logo_", 11) || !_stricmp(n, "D:\\warner.xmv"))) {
+        fprintf(stderr, "[XMV] %s left out (intro_skip)\n", n);
+        g_eax = 0;
+        g_esp += 4;  /* its ret: the caller (cdecl) pops the arguments */
+        return;
+    }
+    sub_00018D40_gen();
+}
