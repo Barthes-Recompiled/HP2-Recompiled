@@ -47,6 +47,7 @@ enum {
     kProgress = 0x527B78, kCards = 0x527E0A, kCardCount = 101, kBeans = 0x527EE0, kBeansMax = 0x527EE2,
     kHouse = 0x527EE4, kHealthMax = 0x527EF6, kSpells = 0x527F0C, kLevelStart = 0x527DFC, kSelectorStart = 0x1EF704,
     kCardItem = 0x2000, kLevels = 59, kCreditsLevel = 52, kSkipToLevel = 30, kSkipToDay = 1,
+    kChargedFlipendo = 0x7002,
 };
 
 static struct {
@@ -209,6 +210,15 @@ static void skip_intro(void)
     done = 1;
     if (!hpcos_ap_option("skip_intro", 1) || MEM32(kProgress) != 0 || MEM32(kProgress + 4) != 0) return;
     MEM32(kProgress + 4) = kSkipToDay;
+    /* what the Day 1 Flipendo lesson leaves behind: quest item 0x7002 (its record at 0x527F5C through
+     * sub_000A9B80, and spell bit 26 in 0x527F0C, which a level's load re-derives from the record:
+     * sub_0004D850 -> sub_0004B1C0 -> sub_000A9C00). Without it a charged Flipendo winds up and never releases,
+     * so the bean barrels can't be broken (seen live 2026-10-30; entering the Entrance Hall set it). The title's
+     * own give-item does both; the hook leaves the bridge's gives out */
+    g_ap_giving++;
+    uint32_t lesson[1] = {kChargedFlipendo};
+    hpcos_CallGuest(sub_00081A10, 1, lesson);
+    g_ap_giving--;
     uint32_t a[1] = {kSkipToLevel};
     hpcos_CallGuest(sub_0004AD50, 1, a);
     MEM16(kLevelStart) = 0;
