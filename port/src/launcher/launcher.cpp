@@ -51,6 +51,7 @@ struct Settings {
     uint32_t mouse_sens = 50;
     bool vibration = true, invert_x = false, invert_y = false;
     bool controller = true;  // the in-game F10 option of the same name
+    bool background_input = true;  // background_input: the controller plays while another window has the focus
     bool broom = false;      // broom_land_flat (an old broom_free_flight line reads as it)
     bool cutscene_skip = true;  // cutscene_skip
     bool intro_skip = true;     // intro_skip
@@ -147,6 +148,7 @@ Settings Load() {
     s.mouse_sens = std::clamp(u(Value("mouse_sensitivity"), 50), 1u, 100u);
     s.vibration = Value("vibration") != "false";
     s.controller = Value("controller") != "false";
+    s.background_input = Value("background_input") != "false";
     s.broom = Value("broom_land_flat") == "true" || Value("broom_free_flight") == "true";
     s.cutscene_skip = Value("cutscene_skip") != "false";
     s.intro_skip = Value("intro_skip") != "false";
@@ -175,6 +177,7 @@ void Save(const Settings& s) {
     SetValue("mouse_sensitivity", std::to_string(s.mouse_sens));
     SetValue("vibration", s.vibration ? "true" : "false");
     SetValue("controller", s.controller ? "true" : "false");
+    SetValue("background_input", s.background_input ? "true" : "false");
     SetValue("broom_land_flat", s.broom ? "true" : "false");
     SetValue("cutscene_skip", s.cutscene_skip ? "true" : "false");
     SetValue("intro_skip", s.intro_skip ? "true" : "false");
@@ -735,6 +738,7 @@ bool DrawPage(Settings& s, std::string& error, FilesAction& files) {
     ImGui::Checkbox("Invert camera X", &s.invert_x);
     ImGui::SameLine(0, 30 * sc);
     ImGui::Checkbox("Invert camera Y", &s.invert_y);
+    ImGui::Checkbox("Controller works while the game is in the background", &s.background_input);
     ImGui::TextDisabled("Key bindings, button remapping and stick settings: F10 > Controls in the game.");
     ImGui::Checkbox("Land the broom on any flat surface (experimental)", &s.broom);
     ImGui::Checkbox("Hold Start or Back to fast-forward cutscenes", &s.cutscene_skip);
