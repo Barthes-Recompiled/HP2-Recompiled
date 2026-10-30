@@ -8,6 +8,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <mutex>
+#include <string>
 
 namespace app {
 
@@ -136,5 +137,29 @@ void CancelKeyCapture();
 // the window's display has Windows HDR on, from the renderer
 inline std::atomic<bool> g_hdr_display{false};
 inline std::atomic<float> g_fps{0};
+
+// xboxrecomp: every setting the F10 panel and the game's own Settings pages show, as one table of rows (rows.cpp),
+// after SCDA-XBERecomp's app::rows (TGP482, src/app/menu.cpp, MIT: src/renderer/LICENSE): a row is a heading, a value
+// stepped left / right, or one of the Controls tab's binding lists or the Debug tab's tools. Each call takes UiLock, so
+// the game thread and the panel can both use it.
+namespace rows {
+enum class Kind { Heading, Value, Keys, PadMap, DebugTools };
+// F10's tabs, in order
+enum Page { kGraphics, kAudio, kControls, kGameplay, kAccessibility, kEnhancements, kDebug, kPages };
+struct Row {
+    Kind kind;
+    int id;             // the row's setting (rows.cpp), -1 for a heading
+    const char* label;
+    bool game = false;  // also on the game's own Settings page
+};
+const Row* Page(int page, size_t* count);
+const char* PageName(int page);
+std::string Value(const Row& row);
+void Step(const Row& row, int step);  // -1 or 1, saved to hpcos.toml at once
+void Defaults(int page);              // the page's rows as a new hpcos.toml has them (the aspect ratio stays)
+bool Shown(const Row& row);           // F10: false leaves it out for now (render scale with a fixed resolution)
+bool Enabled(const Row& row);         // F10: false greys it (bloom strength with bloom off)
+const char* Note(const Row& row);     // F10: the grey line under it, or null
+}  // namespace rows
 
 }  // namespace app

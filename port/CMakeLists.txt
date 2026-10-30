@@ -197,6 +197,7 @@ if(WIN32)
         src/renderer/gpu/vertex.cpp
         src/renderer/app/menu.cpp
         src/renderer/app/input.cpp
+        src/renderer/app/rows.cpp
     )
     # Dear ImGui v1.91.0 (third_party/imgui, MIT), as the renderer: the F10 options panel
     set(IMGUI_DIR ${CMAKE_CURRENT_SOURCE_DIR}/third_party/imgui)
@@ -213,6 +214,7 @@ if(WIN32)
         src/renderer/xdk/hle_d3d8.cpp src/renderer/app/app.cpp src/renderer/gpu/d3d12.cpp
         src/renderer/gpu/pipeline_cache.cpp src/renderer/gpu/render_thread.cpp src/renderer/gpu/shaders.cpp
         src/renderer/gpu/texture.cpp src/renderer/gpu/vertex.cpp src/renderer/app/menu.cpp src/renderer/app/input.cpp
+        src/renderer/app/rows.cpp
         PROPERTIES INCLUDE_DIRECTORIES
         "${CMAKE_CURRENT_SOURCE_DIR}/src/renderer;${XBOXRECOMP_DIR}/src;${IMGUI_DIR}"
         COMPILE_OPTIONS "-msse4.1")
