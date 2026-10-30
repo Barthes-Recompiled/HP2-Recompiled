@@ -81,6 +81,37 @@ If the game jumps through a pointer to code the disassembler never saw (an `ICAL
 target to `icall_seeds.json` and regenerate.
 
 
+### 3.1 Regions
+
+Both regional discs are supported. Their `default.xbe` files are the same program with code and data at shifted
+addresses.
+
+| Disc | `default.xbe` SHA-1 | Profile |
+|---|---|---|
+| USA (NTSC) | `dd881f2c786464046f705bbe21f222e847d970ce` | `cos-usa` (canonical) |
+| Europe (PAL, En/Fr/De/Es/It) | `e639f33f47c56bef32592faf11520006129471e4` | `cos-eur` |
+
+The hand-written sources (overrides, `icall_seeds.json`, `tools/patch_gen.py`) always use the canonical XBE's
+addresses. `regen.sh` starts by running `tools/region/retarget.py`, which hashes `game/default.xbe` and picks the
+matching profile in `port/region/`:
+
+- **Canonical:** nothing changes. A leftover `src/recomp/region/` folder is removed.
+- **The other region:** it writes copies of every file whose addresses change into `src/recomp/region/`
+  (git-ignored). `sub_`/`loc_` names, macro address arguments and in-image hex literals are rewritten through the
+  profile's address map. Those copies are what regen.sh and CMake (`port/region/region.cmake`) use.
+- **Any other XBE:** it stops and lists the supported SHA-1s.
+
+A literal that can't be mapped stops the run with file:line. So does a number-like value (e.g. `0x40000`) in code
+that isn't classified yet: list it in `port/region/retarget.json` under `numbers` (a plain number, kept) or
+`addresses` (mapped). New override code needs no other care. Write it in canonical addresses as before and run
+regen once for each region.
+
+After the first level loads, the log has one line, e.g. `[REGION] cos-eur: ... -> ok`. It confirms that
+the game state the overrides read sits where the profile says. `SUSPECT` means the profile needs a look.
+
+Rebuilding the address map, for example for a new revision of a disc, is described in `tools/region/README.md`.
+Each checkout has a single `src/recomp/gen/`, so switching discs means rerunning `regen.sh`.
+
 ## 4. Build
 
 ```
