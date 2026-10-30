@@ -1,5 +1,6 @@
-// The options panel on F10, after the original renderer's (src/app/menu.cpp): its graphics settings on one ImGui page,
-// applied at once and saved to hpcos.toml. Alt+Enter flips windowed and borderless. The fps counter draws here too.
+// The options panel on F10, after the original renderer's (src/app/menu.cpp): one tab per page of the settings' row
+// table (rows.cpp, shared with the game's own Settings pages), each row stepped left / right, applied at once and saved
+// to hpcos.toml. Alt+Enter flips windowed and borderless. The fps counter draws here too.
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
 #endif
@@ -39,180 +40,57 @@ std::atomic<bool> g_open{false};
 std::atomic<bool> g_start{false};  // xboxrecomp: the start menu is up, the title waits for it
 std::atomic<bool> g_ui{false};  // ImGui is set up
 
-constexpr uint32_t kAnisoValues[] = {0, 2, 4, 8, 16};
-const char* const kAnisoNames[] = {"Game's", "2x", "4x", "8x", "16x"};
-constexpr uint32_t kMsaaValues[] = {0, 2, 4, 8};
-const char* const kMsaaNames[] = {"Off", "2x", "4x", "8x"};
-// internal resolution: render lines, 0 follows the window
-constexpr uint32_t kInternalValues[] = {0, 480, 720, 960, 1080, 1440, 1920, 2160};
-const char* const kInternalNames[] = {"Follow window",  "480 (Xbox, 1x)", "720 (1.5x)", "960 (2x)",
-                                      "1080 (2.25x)",   "1440 (3x)",      "1920 (4x)",  "2160 (4.5x, 4K)"};
-const char* const kDisplayNames[] = {"Windowed", "Borderless", "Fullscreen"};
-const char* const kAspectNames[] = {"4:3", "16:9", "Stretch"};
-
-template <size_t N>
-int IndexOf(const uint32_t (&values)[N], uint32_t v) {
-    for (size_t i = 0; i < N; i++) {
-        if (values[i] == v) return int(i);
-    }
-    return 0;
-}
-
-// the primary monitor's modes, biggest first, each size once
-const std::vector<std::pair<uint32_t, uint32_t>>& Modes() {
-    static std::vector<std::pair<uint32_t, uint32_t>> modes = [] {
-        std::vector<std::pair<uint32_t, uint32_t>> m;
-        DEVMODEA dm{};
-        dm.dmSize = sizeof(dm);
-        for (DWORD i = 0; EnumDisplaySettingsA(nullptr, i, &dm); i++) {
-            if (dm.dmPelsWidth >= 640 && dm.dmPelsHeight >= 480) m.emplace_back(dm.dmPelsWidth, dm.dmPelsHeight);
-        }
-        for (auto s : {std::pair<uint32_t, uint32_t>{1280, 960}, {1440, 1080}, {1920, 1080}, {2560, 1440}})
-            m.push_back(s);
-        std::sort(m.begin(), m.end(), [](auto a, auto b) { return a.first * a.second > b.first * b.second; });
-        m.erase(std::unique(m.begin(), m.end()), m.end());
-        return m;
-    }();
-    return modes;
-}
-
-// xboxrecomp: the sizes for an aspect ratio, biggest first: the monitor's own modes of that shape and the common ones
-// that fit the desktop; stretch takes every mode
-bool Shaped(uint32_t w, uint32_t h, AspectMode a) {
-    if (a == AspectMode::Stretch) return true;
-    float r = float(w) / float(h), want = a == AspectMode::Wide ? 16.0f / 9.0f : 4.0f / 3.0f;
-    return r > want - 0.02f && r < want + 0.02f;
-}
-
-std::vector<std::pair<uint32_t, uint32_t>> ModesFor(AspectMode a) {
-    static const std::pair<uint32_t, uint32_t> kCommon[] = {
-        {640, 480},   {800, 600},   {1024, 768},  {1280, 960},  {1440, 1080}, {1600, 1200}, {1920, 1440},
-        {2048, 1536}, {2880, 2160}, {1280, 720},  {1600, 900},  {1920, 1080}, {2560, 1440}, {3200, 1800},
-        {3840, 2160}};
-    uint32_t dw = GetSystemMetrics(SM_CXSCREEN), dh = GetSystemMetrics(SM_CYSCREEN);
-    std::vector<std::pair<uint32_t, uint32_t>> m;
-    for (auto [w, h] : Modes())
-        if (Shaped(w, h, a)) m.emplace_back(w, h);
-    for (auto [w, h] : kCommon)
-        if (Shaped(w, h, a) && w <= dw && h <= dh) m.emplace_back(w, h);
-    std::sort(m.begin(), m.end(), [](auto x, auto y) { return x.first * x.second > y.first * y.second; });
-    m.erase(std::unique(m.begin(), m.end()), m.end());
-    return m;
-}
-
 // a setting changed: applied by the renderer next frame, kept in hpcos.toml
 void Changed(bool display = false) {
     Save();
     if (display) ApplyDisplay();
 }
 
-bool Combo(const char* label, int* cur, const char* const* names, int n) {
-    return ImGui::Combo(label, cur, names, n);
-}
-
-void Row(const char* text) {
+void Section(const char* text) {
     ImGui::Spacing();
     ImGui::SeparatorText(text);
 }
 
-// xboxrecomp: the Controls tab: keyboard and mouse bindings (click, then press a key or a mouse button; Escape clears),
-// the controller's remapping, sticks, camera and vibration
-void DrawControls(Settings& s) {
-    ImGuiIO& io = ImGui::GetIO();
-    uint32_t vk;
-    if (int b = KeyCaptureBinding(); b >= 0 && TakeCapturedKey(&vk)) {
-        s.keys[b] = vk;
-        Changed();
+// xboxrecomp: a value row as SCDA's OptionRow: the label left, the value between arrows right. The row is the one nav
+// stop (left / right on it step the value, held arrows keep stepping); -1 or 1 when it was stepped
+int OptionRow(const char* label, const char* value) {
+    const ImGuiStyle& style = ImGui::GetStyle();
+    float scale = ImGui::GetIO().FontGlobalScale, arrow = ImGui::GetFrameHeight();
+    float value_w = 220 * scale, block_w = value_w + 2 * (arrow + style.ItemSpacing.x);
+    ImVec2 at = ImGui::GetCursorPos();
+    float row_w = std::max(ImGui::GetContentRegionAvail().x, 440 * scale);
+    ImGui::PushID(label);
+    int step = 0;
+    ImGui::Selectable("##row", false, ImGuiSelectableFlags_AllowOverlap, ImVec2(row_w, arrow));
+    if (ImGui::IsItemFocused()) {
+        if (ImGui::IsKeyPressed(ImGuiKey_LeftArrow) || ImGui::IsKeyPressed(ImGuiKey_GamepadDpadLeft)) step = -1;
+        if (ImGui::IsKeyPressed(ImGuiKey_RightArrow) || ImGui::IsKeyPressed(ImGuiKey_GamepadDpadRight)) step = 1;
     }
-    Row("Keyboard and mouse");
-    if (ImGui::Checkbox("Keyboard and mouse play as controller 1", &s.kbm)) Changed();
-    int ms = int(s.mouse_sensitivity);
-    if (ImGui::SliderInt("Mouse sensitivity", &ms, 1, 100)) s.mouse_sensitivity = uint32_t(ms);
-    if (ImGui::IsItemDeactivatedAfterEdit()) Changed();
-    if (ImGui::Checkbox("Invert mouse Y", &s.mouse_invert_y)) Changed();
-    // xboxrecomp: the movement keys' pace; the mouse wheel steps it in game
-    int mv = int(std::min<uint32_t>(s.move_mode, kMoveModes - 1));
-    if (ImGui::Combo("Movement keys (mouse wheel)", &mv, kMoveModeNames, int(kMoveModes))) {
-        s.move_mode = uint32_t(mv);
-        Changed();
-    }
-    ImGui::TextDisabled("Mouse wheel in game:  down  Slow walk  <  Walk  <  Run  up");
-    ImGui::BeginDisabled(!s.kbm);
-    if (ImGui::TreeNode("Key bindings")) {
-        if (ImGui::BeginTable("##keys", 2, ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingStretchProp)) {
-            for (uint32_t i = 0; i < kKeyBinds; i++) {
-                ImGui::TableNextRow();
-                ImGui::TableNextColumn();
-                ImGui::TextUnformatted(kKeyBindNames[i]);
-                ImGui::TableNextColumn();
-                ImGui::PushID(int(i));
-                bool waiting = KeyCaptureBinding() == int(i);
-                std::string label = waiting ? "Press a key or mouse button (Esc clears)" : KeyName(s.keys[i]);
-                if (ImGui::Button(label.c_str(), ImVec2(-1, 0))) {
-                    if (waiting) CancelKeyCapture();
-                    else StartKeyCapture(int(i));
-                }
-                ImGui::PopID();
-            }
-            ImGui::EndTable();
-        }
-        if (ImGui::Button("Default keys")) {
-            Settings d;
-            std::copy(std::begin(d.keys), std::end(d.keys), std::begin(s.keys));
-            Changed();
-        }
-        ImGui::TreePop();
-    }
-    ImGui::EndDisabled();
-
-    Row("Controller");
-    if (ImGui::Checkbox("Use controller", &s.controller)) Changed();
-    if (!s.controller) ImGui::TextDisabled("The game ignores the controller; keyboard and mouse still play.");
-    int dl = int(s.deadzone_left), dr = int(s.deadzone_right), sl = int(s.sensitivity_left), sr = int(s.sensitivity_right);
-    if (ImGui::SliderInt("Left stick deadzone %", &dl, 0, 50)) s.deadzone_left = uint32_t(dl);
-    if (ImGui::IsItemDeactivatedAfterEdit()) Changed();
-    if (ImGui::SliderInt("Left stick sensitivity %", &sl, 25, 200)) s.sensitivity_left = uint32_t(sl);
-    if (ImGui::IsItemDeactivatedAfterEdit()) Changed();
-    if (ImGui::SliderInt("Right stick deadzone %", &dr, 0, 50)) s.deadzone_right = uint32_t(dr);
-    if (ImGui::IsItemDeactivatedAfterEdit()) Changed();
-    if (ImGui::SliderInt("Right stick sensitivity %", &sr, 25, 200)) s.sensitivity_right = uint32_t(sr);
-    if (ImGui::IsItemDeactivatedAfterEdit()) Changed();
-    if (ImGui::Checkbox("Invert camera X", &s.invert_x)) Changed();
-    ImGui::SameLine();
-    if (ImGui::Checkbox("Invert camera Y", &s.invert_y)) Changed();
-    if (ImGui::Checkbox("Vibration", &s.vibration)) Changed();
-    ImGui::BeginDisabled(!s.vibration);
-    int vs = int(s.vibration_strength);
-    if (ImGui::SliderInt("Vibration strength %", &vs, 0, 100)) s.vibration_strength = uint32_t(vs);
-    if (ImGui::IsItemDeactivatedAfterEdit()) Changed();
-    ImGui::EndDisabled();
-    if (ImGui::TreeNode("Button remapping")) {
-        ImGui::TextDisabled("The pad button each game button reads (a 360/One pad's LB is White, RB Black).");
-        ImGui::PushItemWidth(160 * io.FontGlobalScale);
-        for (uint32_t i = 0; i < kPadInputs; i++) {
-            int m = int(std::min(s.pad_map[i], kPadInputs - 1));
-            std::string label = std::string("Game ") + kPadInputNames[i];
-            if (ImGui::Combo(label.c_str(), &m, kPadInputNames, int(kPadInputs))) {
-                s.pad_map[i] = uint32_t(m);
-                Changed();
-            }
-        }
-        ImGui::PopItemWidth();
-        if (ImGui::Button("Default buttons")) {
-            for (uint32_t i = 0; i < kPadInputs; i++) s.pad_map[i] = i;
-            Changed();
-        }
-        ImGui::TreePop();
-    }
+    ImGui::SetCursorPos(at);
+    ImGui::AlignTextToFramePadding();
+    ImGui::TextUnformatted(label);
+    ImGui::PushItemFlag(ImGuiItemFlags_NoNav | ImGuiItemFlags_ButtonRepeat, true);
+    float x = at.x + row_w - block_w;
+    ImGui::SetCursorPos(ImVec2(x, at.y));
+    if (ImGui::ArrowButton("##dec", ImGuiDir_Left)) step = -1;
+    float pad = std::max((value_w - ImGui::CalcTextSize(value).x) * 0.5f, 0.0f);
+    ImGui::SetCursorPos(ImVec2(x + arrow + style.ItemSpacing.x + pad, at.y));
+    ImGui::AlignTextToFramePadding();
+    ImGui::TextUnformatted(value);
+    ImGui::SetCursorPos(ImVec2(x + arrow + value_w + 2 * style.ItemSpacing.x, at.y));
+    if (ImGui::ArrowButton("##inc", ImGuiDir_Right)) step = 1;
+    ImGui::PopItemFlag();
+    ImGui::PopID();
+    return step;
 }
 
 // xboxrecomp: the Debug tab: where this run's log is, a marker line in it for "it happened here", a frame capture
-// and the renderer's debug keys
-void DrawDebug(Settings& s) {
+// (the debug settings are rows below it)
+void DrawDebug() {
     static char log_name[MAX_PATH];
     if (!log_name[0] && !GetEnvironmentVariableA("HPCOS_RUN_LOG", log_name, sizeof log_name))
         std::snprintf(log_name, sizeof log_name, "hpcos_run.log");
-    Row("Logs");
+    Section("Logs");
     ImGui::TextWrapped("This run's log: %s", log_name);
     if (ImGui::Button("Open logs folder")) {
         char dir[MAX_PATH];
@@ -237,7 +115,7 @@ void DrawDebug(Settings& s) {
     if (marks) ImGui::TextDisabled("%d mark%s written: search the log for [MARK]", marks, marks == 1 ? "" : "s");
     ImGui::TextDisabled("Mark right after something goes wrong, then give the mark's number with your report.");
 
-    Row("Shaders");
+    Section("Shaders");
     ImGui::Text("Pipelines recorded: %u (shadercache\\pipelines_list.bin)", gpu::g_pipelines_recorded.load());
     if (uint32_t total = gpu::g_prebuild_total)
         ImGui::Text("Made ahead at start: %u / %u, %u could not be", gpu::g_prebuild_done.load(), total,
@@ -245,81 +123,85 @@ void DrawDebug(Settings& s) {
     else
         ImGui::TextDisabled("Nothing to make ahead at start (an empty list, or RECOMP_PREBUILD=0)");
 
-    Row("Renderer");
+    Section("Renderer");
     if (ImGui::Button("Capture the next frame (F12)")) gpu::g_capture = true;
     ImGui::SameLine();
     ImGui::TextDisabled("saved under captures\\");
-    if (ImGui::Checkbox("Debug keys", &s.debug_keys)) Changed();
-    ImGui::TextDisabled("F7 depth test always passes, F8 log depth for all draws, F9 alpha test off");
-
-    Row("Audio");
-    ImGui::Checkbox("Audio trace", &s.audio_trace);
-    ImGui::TextDisabled("Logs every sound started and every DirectSound call; on only while reproducing.");
 }
 
-// xboxrecomp: F10's Defaults resets the page it is on, not every setting (the aspect ratio, a boot setting, stays)
-static void ResetPage(Settings& s, const char* page) {
-    const Settings d;
-    if (!std::strcmp(page, "Graphics")) {
-        std::memcpy(&s.aniso, &d.aniso, sizeof(s.aniso));
-        std::memcpy(&s.brightness, &d.brightness, sizeof(s.brightness));
-        std::memcpy(&s.contrast, &d.contrast, sizeof(s.contrast));
-        std::memcpy(&s.display_mode, &d.display_mode, sizeof(s.display_mode));
-        std::memcpy(&s.draw_all, &d.draw_all, sizeof(s.draw_all));
-        std::memcpy(&s.fps_counter, &d.fps_counter, sizeof(s.fps_counter));
-        std::memcpy(&s.bloom, &d.bloom, sizeof(s.bloom));
-        std::memcpy(&s.bloom_strength, &d.bloom_strength, sizeof(s.bloom_strength));
-        std::memcpy(&s.sharpen, &d.sharpen, sizeof(s.sharpen));
-        std::memcpy(&s.saturation, &d.saturation, sizeof(s.saturation));
-        std::memcpy(&s.vibrance, &d.vibrance, sizeof(s.vibrance));
-        std::memcpy(&s.warmth, &d.warmth, sizeof(s.warmth));
-        std::memcpy(&s.vignette, &d.vignette, sizeof(s.vignette));
-        std::memcpy(&s.grain, &d.grain, sizeof(s.grain));
-        std::memcpy(&s.fov, &d.fov, sizeof(s.fov));
-        std::memcpy(&s.height, &d.height, sizeof(s.height));
-        std::memcpy(&s.internal_height, &d.internal_height, sizeof(s.internal_height));
-        std::memcpy(&s.msaa, &d.msaa, sizeof(s.msaa));
-        std::memcpy(&s.render_max_height, &d.render_max_height, sizeof(s.render_max_height));
-        std::memcpy(&s.render_percent, &d.render_percent, sizeof(s.render_percent));
-        std::memcpy(&s.smaa, &d.smaa, sizeof(s.smaa));
-        std::memcpy(&s.vsync, &d.vsync, sizeof(s.vsync));
-        std::memcpy(&s.width, &d.width, sizeof(s.width));
+// xboxrecomp: the Controls tab's keyboard and mouse bindings: click, then press a key or a mouse button; Escape clears
+void DrawKeyBindings(Settings& s, const char* label) {
+    if (!ImGui::TreeNode(label)) return;
+    if (ImGui::BeginTable("##keys", 2, ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingStretchProp)) {
+        for (uint32_t i = 0; i < kKeyBinds; i++) {
+            ImGui::TableNextRow();
+            ImGui::TableNextColumn();
+            ImGui::TextUnformatted(kKeyBindNames[i]);
+            ImGui::TableNextColumn();
+            ImGui::PushID(int(i));
+            bool waiting = KeyCaptureBinding() == int(i);
+            std::string text = waiting ? "Press a key or mouse button (Esc clears)" : KeyName(s.keys[i]);
+            if (ImGui::Button(text.c_str(), ImVec2(-1, 0))) {
+                if (waiting) CancelKeyCapture();
+                else StartKeyCapture(int(i));
+            }
+            ImGui::PopID();
+        }
+        ImGui::EndTable();
     }
-    if (!std::strcmp(page, "Audio")) {
-        std::memcpy(&s.speakers, &d.speakers, sizeof(s.speakers));
+    if (ImGui::Button("Default keys")) {
+        Settings d;
+        std::copy(std::begin(d.keys), std::end(d.keys), std::begin(s.keys));
+        Changed();
     }
-    if (!std::strcmp(page, "Controls")) {
-        std::memcpy(&s.controller, &d.controller, sizeof(s.controller));
-        std::memcpy(&s.deadzone_left, &d.deadzone_left, sizeof(s.deadzone_left));
-        std::memcpy(&s.deadzone_right, &d.deadzone_right, sizeof(s.deadzone_right));
-        std::memcpy(&s.invert_x, &d.invert_x, sizeof(s.invert_x));
-        std::memcpy(&s.invert_y, &d.invert_y, sizeof(s.invert_y));
-        std::memcpy(&s.kbm, &d.kbm, sizeof(s.kbm));
-        std::memcpy(&s.keys, &d.keys, sizeof(s.keys));
-        std::memcpy(&s.mouse_invert_y, &d.mouse_invert_y, sizeof(s.mouse_invert_y));
-        std::memcpy(&s.mouse_sensitivity, &d.mouse_sensitivity, sizeof(s.mouse_sensitivity));
-        std::memcpy(&s.move_mode, &d.move_mode, sizeof(s.move_mode));
-        std::memcpy(&s.pad_map, &d.pad_map, sizeof(s.pad_map));
-        std::memcpy(&s.sensitivity_left, &d.sensitivity_left, sizeof(s.sensitivity_left));
-        std::memcpy(&s.sensitivity_right, &d.sensitivity_right, sizeof(s.sensitivity_right));
-        std::memcpy(&s.vibration, &d.vibration, sizeof(s.vibration));
-        std::memcpy(&s.vibration_strength, &d.vibration_strength, sizeof(s.vibration_strength));
+    ImGui::TreePop();
+}
+
+// xboxrecomp: the controller's remapping: the pad button each game button reads
+void DrawPadMap(Settings& s, const char* label) {
+    if (!ImGui::TreeNode(label)) return;
+    ImGui::TextDisabled("The pad button each game button reads (a 360/One pad's LB is White, RB Black).");
+    ImGui::PushItemWidth(160 * ImGui::GetIO().FontGlobalScale);
+    for (uint32_t i = 0; i < kPadInputs; i++) {
+        int m = int(std::min(s.pad_map[i], kPadInputs - 1));
+        std::string name = std::string("Game ") + kPadInputNames[i];
+        if (ImGui::Combo(name.c_str(), &m, kPadInputNames, int(kPadInputs))) {
+            s.pad_map[i] = uint32_t(m);
+            Changed();
+        }
     }
-    if (!std::strcmp(page, "Gameplay")) {
-        std::memcpy(&s.cutscene_skip, &d.cutscene_skip, sizeof(s.cutscene_skip));
-        std::memcpy(&s.intro_skip, &d.intro_skip, sizeof(s.intro_skip));
+    ImGui::PopItemWidth();
+    if (ImGui::Button("Default buttons")) {
+        for (uint32_t i = 0; i < kPadInputs; i++) s.pad_map[i] = i;
+        Changed();
     }
-    if (!std::strcmp(page, "Accessibility")) {
-        std::memcpy(&s.colorblind, &d.colorblind, sizeof(s.colorblind));
-        std::memcpy(&s.colorblind_strength, &d.colorblind_strength, sizeof(s.colorblind_strength));
-    }
-    if (!std::strcmp(page, "Debug")) {
-        std::memcpy(&s.audio_trace, &d.audio_trace, sizeof(s.audio_trace));
-        std::memcpy(&s.debug_keys, &d.debug_keys, sizeof(s.debug_keys));
-    }
-    if (!std::strcmp(page, "Enhancements")) {
-        std::memcpy(&s.grounds_warps, &d.grounds_warps, sizeof(s.grounds_warps));
-        std::memcpy(&s.broom_land_flat, &d.broom_land_flat, sizeof(s.broom_land_flat));
+    ImGui::TreePop();
+}
+
+// xboxrecomp: one F10 tab: its rows from the shared table (rows.cpp), as the game's own Settings pages list them
+void DrawRows(Settings& s, int page) {
+    size_t count = 0;
+    const rows::Row* list = rows::Page(page, &count);
+    for (size_t i = 0; i < count; i++) {
+        const rows::Row& r = list[i];
+        if (r.kind == rows::Kind::Heading) {
+            Section(r.label);
+            continue;
+        }
+        if (!rows::Shown(r)) continue;
+        bool enabled = rows::Enabled(r);
+        ImGui::BeginDisabled(!enabled);
+        if (r.kind == rows::Kind::Keys) {
+            DrawKeyBindings(s, r.label);
+        } else if (r.kind == rows::Kind::PadMap) {
+            DrawPadMap(s, r.label);
+        } else if (r.kind == rows::Kind::DebugTools) {
+            DrawDebug();
+        } else if (int step = OptionRow(r.label, rows::Value(r).c_str()); step && enabled) {
+            rows::Step(r, step);
+        }
+        ImGui::EndDisabled();
+        if (const char* note = rows::Note(r)) ImGui::TextDisabled("%s", note);
     }
 }
 
@@ -327,9 +209,15 @@ static void ResetPage(Settings& s, const char* page) {
 void DrawPanel(bool start) {
     Settings& s = Get();
     ImGuiIO& io = ImGui::GetIO();
-    ImGui::SetNextWindowPos(ImVec2(io.DisplaySize.x * 0.5f, io.DisplaySize.y * 0.5f), ImGuiCond_Appearing,
+    uint32_t vk;
+    if (int b = KeyCaptureBinding(); b >= 0 && TakeCapturedKey(&vk)) {
+        s.keys[b] = vk;
+        Changed();
+    }
+    // centred every frame: the rows' height settles a few frames after it opens
+    ImGui::SetNextWindowPos(ImVec2(io.DisplaySize.x * 0.5f, io.DisplaySize.y * 0.5f), ImGuiCond_Always,
                             ImVec2(0.5f, 0.5f));
-    ImGui::SetNextWindowSize(ImVec2(520 * io.FontGlobalScale, 0), ImGuiCond_Appearing);
+    ImGui::SetNextWindowSize(ImVec2(560 * io.FontGlobalScale, 0), ImGuiCond_Appearing);
     bool open = true;
     const char* title = start ? "Harry Potter and the Chamber of Secrets - Settings###start" : "Options (F10)";
     if (!ImGui::Begin(title, start ? nullptr : &open, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_AlwaysAutoResize)) {
@@ -337,198 +225,27 @@ void DrawPanel(bool start) {
         if (!open) g_open = false;
         return;
     }
-    ImGui::PushItemWidth(260 * io.FontGlobalScale);
 
-    bool tabs = ImGui::BeginTabBar("##tabs");
-    static const char* page = "Graphics";  // the open page, for Defaults
-    if (tabs && ImGui::BeginTabItem("Graphics")) {
-        page = "Graphics";
-    Row("Display");
-    // the aspect ratio first: the sizes below follow it
-    int asp = int(s.aspect);
-    if (Combo("Aspect ratio", &asp, kAspectNames, 3)) {
-        s.aspect = AspectMode(asp);
-        // a window or mode of the old shape: the biggest of the new one
-        if (s.width && s.height && !Shaped(s.width, s.height, s.aspect)) {
-            auto m = ModesFor(s.aspect);
-            if (!m.empty()) {
-                s.width = m.front().first;
-                s.height = m.front().second;
-            }
+    static int page = rows::kGraphics;  // the open tab, for Defaults
+    if (ImGui::BeginTabBar("##tabs")) {
+        for (int p = 0; p < rows::kPages; p++) {
+            if (start && p == rows::kDebug) continue;
+            if (!ImGui::BeginTabItem(rows::PageName(p))) continue;
+            page = p;
+            // the rows scroll past two thirds of the screen's height (Graphics at 720 lines)
+            ImGui::SetNextWindowSizeConstraints(ImVec2(0, 0), ImVec2(FLT_MAX, io.DisplaySize.y * 0.66f));
+            ImGui::BeginChild("##rows", ImVec2(540 * io.FontGlobalScale, 0),
+                              ImGuiChildFlags_AutoResizeY | ImGuiChildFlags_NavFlattened);
+            DrawRows(s, p);
+            ImGui::EndChild();
+            ImGui::EndTabItem();
         }
-        if (start) SetBootAspect(s.aspect);
-        Changed(true);
+        ImGui::EndTabBar();
     }
-    if (!start && s.aspect != BootAspect())
-        ImGui::TextDisabled("Aspect ratio applies at the next start.");
-    int dm = int(s.display_mode);
-    if (Combo("Display mode", &dm, kDisplayNames, 3)) {
-        s.display_mode = DisplayMode(dm);
-        Changed(true);
-    }
-    {
-        const auto modes = ModesFor(s.aspect);
-        std::string cur = s.width && s.height ? std::to_string(s.width) + " x " + std::to_string(s.height) : "Desktop";
-        if (ImGui::BeginCombo(s.display_mode == DisplayMode::Windowed ? "Window size" : "Resolution", cur.c_str())) {
-            if (ImGui::Selectable("Desktop", !(s.width && s.height))) {
-                s.width = s.height = 0;
-                Changed(true);
-            }
-            for (auto [w, h] : modes) {
-                std::string name = std::to_string(w) + " x " + std::to_string(h);
-                if (ImGui::Selectable(name.c_str(), w == s.width && h == s.height)) {
-                    s.width = w;
-                    s.height = h;
-                    Changed(true);
-                }
-            }
-            ImGui::EndCombo();
-        }
-        if (s.display_mode == DisplayMode::Borderless)
-            ImGui::TextDisabled("Borderless covers the monitor; the size is for windowed / fullscreen.");
-    }
-    if (ImGui::Checkbox("Vsync", &s.vsync)) Changed();
-
-    Row("Resolution");
-    int ir = IndexOf(kInternalValues, s.internal_height);
-    if (Combo("Internal resolution", &ir, kInternalNames, int(std::size(kInternalNames)))) {
-        s.internal_height = kInternalValues[ir];
-        Changed();
-    }
-    if (!s.internal_height) {
-        int pct = int(s.render_percent);
-        if (ImGui::SliderInt("Render scale %", &pct, 25, 200)) s.render_percent = uint32_t(pct);
-        if (ImGui::IsItemDeactivatedAfterEdit()) Changed();
-        int cap = int(s.render_max_height);
-        if (ImGui::SliderInt("Max render height", &cap, 0, 4320, cap ? "%d lines" : "No limit")) s.render_max_height = uint32_t(cap);
-        if (ImGui::IsItemDeactivatedAfterEdit()) Changed();
-    }
-
-    Row("Anti-aliasing and filtering");
-    int ms = IndexOf(kMsaaValues, s.msaa);
-    if (Combo("MSAA", &ms, kMsaaNames, int(std::size(kMsaaNames)))) {
-        s.msaa = kMsaaValues[ms];
-        Changed();
-    }
-    if (ImGui::Checkbox("SMAA", &s.smaa)) Changed();
-    int an = IndexOf(kAnisoValues, s.aniso);
-    if (Combo("Anisotropic filtering", &an, kAnisoNames, int(std::size(kAnisoNames)))) {
-        s.aniso = kAnisoValues[an];
-        Changed();
-    }
-
-    Row("Picture");
-    int br = int(s.brightness), co = int(s.contrast);
-    if (ImGui::SliderInt("Brightness", &br, 0, 100)) s.brightness = uint32_t(br);
-    if (ImGui::IsItemDeactivatedAfterEdit()) Changed();
-    if (ImGui::SliderInt("Contrast", &co, 0, 100)) s.contrast = uint32_t(co);
-    if (ImGui::IsItemDeactivatedAfterEdit()) Changed();
-    if (ImGui::Checkbox("FPS counter", &s.fps_counter)) Changed();
-    if (ImGui::Checkbox("Draw everything in view (no doorway culling)", &s.draw_all)) Changed();
-
-    // xboxrecomp: post-processing, off or neutral by default
-    Row("Post-processing");
-    if (ImGui::Checkbox("Bloom", &s.bloom)) Changed();
-    ImGui::SameLine();
-    ImGui::TextDisabled("a glow round bright lights, not the HUD");
-    if (!s.bloom) ImGui::BeginDisabled();
-    int bs = int(s.bloom_strength);
-    if (ImGui::SliderInt("Bloom strength", &bs, 0, 100)) s.bloom_strength = uint32_t(bs);
-    if (ImGui::IsItemDeactivatedAfterEdit()) Changed();
-    if (!s.bloom) ImGui::EndDisabled();
-    int sh = int(s.sharpen), sa = int(s.saturation), vi = int(s.vibrance), wa = int(s.warmth);
-    if (ImGui::SliderInt("Sharpening", &sh, 0, 100, sh ? "%d" : "off")) s.sharpen = uint32_t(sh);
-    if (ImGui::IsItemDeactivatedAfterEdit()) Changed();
-    if (ImGui::SliderInt("Saturation", &sa, 0, 200, "%d %%")) s.saturation = uint32_t(sa);
-    if (ImGui::IsItemDeactivatedAfterEdit()) Changed();
-    if (ImGui::SliderInt("Vibrance", &vi, 0, 100, vi ? "%d" : "off")) s.vibrance = uint32_t(vi);
-    if (ImGui::IsItemDeactivatedAfterEdit()) Changed();
-    if (ImGui::SliderInt("Warmth", &wa, 0, 100, wa == 50 ? "as the game" : wa < 50 ? "cooler %d" : "warmer %d"))
-        s.warmth = uint32_t(wa);
-    if (ImGui::IsItemDeactivatedAfterEdit()) Changed();
-    int vg = int(s.vignette), gr = int(s.grain);
-    if (ImGui::SliderInt("Vignette", &vg, 0, 100, vg ? "%d" : "off")) s.vignette = uint32_t(vg);
-    if (ImGui::IsItemDeactivatedAfterEdit()) Changed();
-    if (ImGui::SliderInt("Film grain", &gr, 0, 100, gr ? "%d" : "off")) s.grain = uint32_t(gr);
-    if (ImGui::IsItemDeactivatedAfterEdit()) Changed();
-    int fv = int(std::clamp(s.fov, 80u, 130u));
-    if (ImGui::SliderInt("Field of view (experimental)", &fv, 80, 130, fv == 100 ? "as the game" : "%d %%")) s.fov = uint32_t(fv);
-    if (ImGui::IsItemDeactivatedAfterEdit()) Changed();
-
-        ImGui::EndTabItem();
-    }
-    if (tabs && ImGui::BeginTabItem("Audio")) {
-        page = "Audio";
-        Row("Output");
-        // xboxrecomp: the console mixes to 5.1 (Dolby Digital out of the console); stereo folds it down
-        int sp = s.speakers == 6 ? 1 : 0;
-        const char* const kSpeakerNames[] = {"Stereo", "5.1 surround"};
-        if (Combo("Speakers", &sp, kSpeakerNames, 2)) {
-            s.speakers = sp ? 6 : 2;
-            Changed();
-        }
-        ImGui::TextDisabled("Takes effect the next time the game starts.");
-        ImGui::TextDisabled("5.1 needs Windows' speaker setup set to 5.1 (or a 5.1 HDMI receiver).");
-        ImGui::EndTabItem();
-    }
-    if (tabs && ImGui::BeginTabItem("Controls")) {
-        page = "Controls";
-        DrawControls(s);
-        ImGui::EndTabItem();
-    }
-    if (tabs && ImGui::BeginTabItem("Gameplay")) {
-        page = "Gameplay";
-        Row("Cutscenes");
-        if (ImGui::Checkbox("Hold Start or Back to fast-forward a cutscene", &s.cutscene_skip)) Changed();
-        ImGui::TextDisabled("Runs it to its own end, muted and with the picture held, so nothing it sets up is missed.");
-        if (ImGui::Checkbox("Skip the logos at start-up", &s.intro_skip)) Changed();
-        ImGui::TextDisabled("The EA and Warner Bros. logo movies; takes effect at the next start.");
-        ImGui::EndTabItem();
-    }
-    if (tabs && ImGui::BeginTabItem("Accessibility")) {
-        page = "Accessibility";
-        Row("Colour blindness");
-        int cb = int(std::min(s.colorblind, 3u));
-        const char* const kCbNames[] = {"Off", "Protanopia (red-weak)", "Deuteranopia (green-weak)",
-                                        "Tritanopia (blue-weak)"};
-        if (Combo("Correction filter", &cb, kCbNames, 4)) {
-            s.colorblind = uint32_t(cb);
-            Changed();
-        }
-        ImGui::BeginDisabled(!s.colorblind);
-        int st = int(s.colorblind_strength);
-        if (ImGui::SliderInt("Strength %", &st, 0, 100)) s.colorblind_strength = uint32_t(st);
-        if (ImGui::IsItemDeactivatedAfterEdit()) Changed();
-        ImGui::EndDisabled();
-        ImGui::TextDisabled("Shifts the colours a colour-blind player confuses toward ones they can tell apart.");
-        ImGui::EndTabItem();
-    }
-    if (tabs && ImGui::BeginTabItem("Enhancements")) {
-        // xboxrecomp: changes to how the game plays that go beyond the console's (moved from Debug, 2026-10-30)
-        page = "Enhancements";
-        Row("Hogwarts grounds");
-        bool explore = !s.grounds_warps;  // the setting is the game's path warps; exploring is them off
-        if (ImGui::Checkbox("Explore Hogwarts Grounds (experimental)", &explore)) s.grounds_warps = !explore, Changed();
-        ImGui::TextDisabled("On: walk the whole grounds, every area shown. Off: a path's end fades out to its other end, as the game does.");
-        ImGui::TextDisabled("While on, the story's cutscenes and lessons on the grounds play normally; flying practice can only be repeated later by disabling this option.");
-        Row("Broom");
-        if (ImGui::Checkbox("Land the broom on any flat surface (experimental)", &s.broom_land_flat)) Changed();
-        ImGui::TextDisabled("On: over a flat roof or a wall's top, land as in a landing zone. Off: only the game's landing zones.");
-        ImGui::EndTabItem();
-    }
-    if (tabs && !start && ImGui::BeginTabItem("Debug")) {
-        page = "Debug";
-        DrawDebug(s);
-        ImGui::EndTabItem();
-    }
-    if (tabs) ImGui::EndTabBar();
 
     ImGui::Spacing();
     ImGui::Separator();
-    if (ImGui::Button("Defaults (this page)")) {
-        ResetPage(s, page);
-        Changed(true);
-    }
+    if (ImGui::Button("Defaults (this page)")) rows::Defaults(page);
     ImGui::SameLine();
     if (start) {
         if (ImGui::Checkbox("Show this page at startup", &s.start_menu)) Changed();
@@ -548,7 +265,6 @@ void DrawPanel(bool start) {
         ImGui::SameLine();
         ImGui::TextDisabled("Saved to hpcos.toml");
     }
-    ImGui::PopItemWidth();
     ImGui::End();
     if (!open) g_open = false;
 }
