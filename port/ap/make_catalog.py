@@ -136,6 +136,9 @@ def build(census=None):
             item(f"{name} Pass", kind="pass", level=lv, **{"class": "progression"})
     for b in SPELL_BITS:
         item(f"Spell {b}", kind="spell", spell=b, **{"class": "progression"})
+    # the Day 1 lesson's quest item 0x7002: charging Flipendo (bean barrels). Not a check: Hogwarts levels force
+    # spell bit 26 on from their level records (+0x14 flag 2, sub_0004B1C0), so the bit says nothing about the lesson
+    item("Charged Flipendo", kind="quest", item=0x7002, **{"class": "progression"})
     for c in range(1, CARDS + 1):
         item(f"Wizard Card {c}", kind="card", card=c, **{"class": "useful"})
     item("Bean Bag", kind="bag", **{"class": "useful"})

@@ -54,7 +54,7 @@ enum {
 static struct {
     int ready;
     uint8_t card[kCardCount + 1], visited[kLevels];
-    uint32_t spells, ap_spells;
+    uint32_t spells, ap_spells, spells_seen;
     int beans, beans_got, ap_beans, house;
     uint8_t ap_card[kCardCount + 1];
 } g;
@@ -152,6 +152,13 @@ static void give(const char *kind, int value)
         MEM16(kHealthMax) = (uint16_t)(v > 255 ? 255 : v);
         uint32_t a[1] = {MEM16(kHealthMax)};
         hpcos_CallGuest(sub_00081860, 1, a);
+    } else if (!strcmp(kind, "quest") && value == kChargedFlipendo) {
+        /* the lesson's quest item, through the title's give-item like a card (its 0x7xxx path sets bit 26,
+         * records the item and shows the item page) */
+        uint32_t a[1] = {kChargedFlipendo};
+        g_ap_giving++;
+        hpcos_CallGuest(sub_00081A10, 1, a);
+        g_ap_giving--;
     } else if (!strcmp(kind, "heal")) {
         uint32_t a[1] = {MEM16(kHealthMax)};
         hpcos_CallGuest(sub_00081860, 1, a);
@@ -182,7 +189,15 @@ static void counters(void)
         if (g.beans_got >= kBeanSteps[i]) check("beans:%d", kBeanSteps[i]);
     for (int n = 50; n <= g.beans_got && n <= 2000; n += 50) check("beans:%d", n);
 
-    uint32_t spells = MEM32(kSpells), fresh = spells & ~g.spells & ~g.ap_spells;
+    /* a level's load (sub_0004B1C0) ORs its record's spell mask in; The Burrow and the Diagon and Knockturn Alley
+     * shops (record flag 1) first reset the set and re-derive bit 26 from quest item 0x7002, which drops spells
+     * learned since (vanilla never returns there; the Travel page does), so every spell seen owned this game is put
+     * back. Bit 26 stays the game's: the Hogwarts interiors force it on (flag 2), the shops read the record */
+    uint32_t spells = MEM32(kSpells);
+    if (MEM32(kProgress) == 0 && MEM32(kProgress + 4) == 0) g.spells_seen = 0;  /* a new game (or the title) */
+    g.spells_seen |= spells & ~(1u << 26);
+    if (spells != (spells | g.spells_seen)) MEM32(kSpells) = spells |= g.spells_seen;
+    uint32_t fresh = spells & ~g.spells & ~g.ap_spells & ~(1u << 26);
     for (int b = 0; b < 32; b++)
         if (fresh & (1u << b)) check("spell:%d", b);
     g.spells = spells;
@@ -225,10 +240,13 @@ static void skip_intro(void)
      * so the bean barrels can't be broken (seen live 2026-10-30; entering the Entrance Hall set it). The title's
      * give-item (sub_00081A10, 0x7xxx path at 0x8258B) does the same two writes and then opens the item page
      * (sub_0004DCE0), which before any level has loaded reads nothing and ends on the dirty-disc screen
-     * (seen live 2026-10-30), so only the two writes here */
-    MEM32(kSpells) |= 1u << 26;
-    uint32_t lesson[1] = {kChargedFlipendo};
-    hpcos_CallGuest(sub_000A9B80, 1, lesson);
+     * (seen live 2026-10-30), so only the two writes here. With the apworld's Shuffle Charged Flipendo the item
+     * comes from the pool instead (give "quest" below) */
+    if (!hpcos_ap_option("shuffle_charged_flipendo", 0)) {
+        MEM32(kSpells) |= 1u << 26;
+        uint32_t lesson[1] = {kChargedFlipendo};
+        hpcos_CallGuest(sub_000A9B80, 1, lesson);
+    }
     uint32_t a[1] = {kSkipToLevel};
     hpcos_CallGuest(sub_0004AD50, 1, a);
     MEM16(kLevelStart) = 0;

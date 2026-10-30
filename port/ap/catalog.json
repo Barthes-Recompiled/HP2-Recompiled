@@ -1,5 +1,5 @@
 {
- "version": "hpcos-1-94b8cecd6dee",
+ "version": "hpcos-1-530921f2d309",
  "game": "Harry Potter and the Chamber of Secrets Recomp",
  "location_base": 74200000,
  "item_base": 74210000,
@@ -296,635 +296,641 @@
    "spell": 23,
    "class": "progression"
   },
-  "Wizard Card 1": {
+  "Charged Flipendo": {
    "id": 74210042,
+   "kind": "quest",
+   "item": 28674,
+   "class": "progression"
+  },
+  "Wizard Card 1": {
+   "id": 74210043,
    "kind": "card",
    "card": 1,
    "class": "useful"
   },
   "Wizard Card 2": {
-   "id": 74210043,
+   "id": 74210044,
    "kind": "card",
    "card": 2,
    "class": "useful"
   },
   "Wizard Card 3": {
-   "id": 74210044,
+   "id": 74210045,
    "kind": "card",
    "card": 3,
    "class": "useful"
   },
   "Wizard Card 4": {
-   "id": 74210045,
+   "id": 74210046,
    "kind": "card",
    "card": 4,
    "class": "useful"
   },
   "Wizard Card 5": {
-   "id": 74210046,
+   "id": 74210047,
    "kind": "card",
    "card": 5,
    "class": "useful"
   },
   "Wizard Card 6": {
-   "id": 74210047,
+   "id": 74210048,
    "kind": "card",
    "card": 6,
    "class": "useful"
   },
   "Wizard Card 7": {
-   "id": 74210048,
+   "id": 74210049,
    "kind": "card",
    "card": 7,
    "class": "useful"
   },
   "Wizard Card 8": {
-   "id": 74210049,
+   "id": 74210050,
    "kind": "card",
    "card": 8,
    "class": "useful"
   },
   "Wizard Card 9": {
-   "id": 74210050,
+   "id": 74210051,
    "kind": "card",
    "card": 9,
    "class": "useful"
   },
   "Wizard Card 10": {
-   "id": 74210051,
+   "id": 74210052,
    "kind": "card",
    "card": 10,
    "class": "useful"
   },
   "Wizard Card 11": {
-   "id": 74210052,
+   "id": 74210053,
    "kind": "card",
    "card": 11,
    "class": "useful"
   },
   "Wizard Card 12": {
-   "id": 74210053,
+   "id": 74210054,
    "kind": "card",
    "card": 12,
    "class": "useful"
   },
   "Wizard Card 13": {
-   "id": 74210054,
+   "id": 74210055,
    "kind": "card",
    "card": 13,
    "class": "useful"
   },
   "Wizard Card 14": {
-   "id": 74210055,
+   "id": 74210056,
    "kind": "card",
    "card": 14,
    "class": "useful"
   },
   "Wizard Card 15": {
-   "id": 74210056,
+   "id": 74210057,
    "kind": "card",
    "card": 15,
    "class": "useful"
   },
   "Wizard Card 16": {
-   "id": 74210057,
+   "id": 74210058,
    "kind": "card",
    "card": 16,
    "class": "useful"
   },
   "Wizard Card 17": {
-   "id": 74210058,
+   "id": 74210059,
    "kind": "card",
    "card": 17,
    "class": "useful"
   },
   "Wizard Card 18": {
-   "id": 74210059,
+   "id": 74210060,
    "kind": "card",
    "card": 18,
    "class": "useful"
   },
   "Wizard Card 19": {
-   "id": 74210060,
+   "id": 74210061,
    "kind": "card",
    "card": 19,
    "class": "useful"
   },
   "Wizard Card 20": {
-   "id": 74210061,
+   "id": 74210062,
    "kind": "card",
    "card": 20,
    "class": "useful"
   },
   "Wizard Card 21": {
-   "id": 74210062,
+   "id": 74210063,
    "kind": "card",
    "card": 21,
    "class": "useful"
   },
   "Wizard Card 22": {
-   "id": 74210063,
+   "id": 74210064,
    "kind": "card",
    "card": 22,
    "class": "useful"
   },
   "Wizard Card 23": {
-   "id": 74210064,
+   "id": 74210065,
    "kind": "card",
    "card": 23,
    "class": "useful"
   },
   "Wizard Card 24": {
-   "id": 74210065,
+   "id": 74210066,
    "kind": "card",
    "card": 24,
    "class": "useful"
   },
   "Wizard Card 25": {
-   "id": 74210066,
+   "id": 74210067,
    "kind": "card",
    "card": 25,
    "class": "useful"
   },
   "Wizard Card 26": {
-   "id": 74210067,
+   "id": 74210068,
    "kind": "card",
    "card": 26,
    "class": "useful"
   },
   "Wizard Card 27": {
-   "id": 74210068,
+   "id": 74210069,
    "kind": "card",
    "card": 27,
    "class": "useful"
   },
   "Wizard Card 28": {
-   "id": 74210069,
+   "id": 74210070,
    "kind": "card",
    "card": 28,
    "class": "useful"
   },
   "Wizard Card 29": {
-   "id": 74210070,
+   "id": 74210071,
    "kind": "card",
    "card": 29,
    "class": "useful"
   },
   "Wizard Card 30": {
-   "id": 74210071,
+   "id": 74210072,
    "kind": "card",
    "card": 30,
    "class": "useful"
   },
   "Wizard Card 31": {
-   "id": 74210072,
+   "id": 74210073,
    "kind": "card",
    "card": 31,
    "class": "useful"
   },
   "Wizard Card 32": {
-   "id": 74210073,
+   "id": 74210074,
    "kind": "card",
    "card": 32,
    "class": "useful"
   },
   "Wizard Card 33": {
-   "id": 74210074,
+   "id": 74210075,
    "kind": "card",
    "card": 33,
    "class": "useful"
   },
   "Wizard Card 34": {
-   "id": 74210075,
+   "id": 74210076,
    "kind": "card",
    "card": 34,
    "class": "useful"
   },
   "Wizard Card 35": {
-   "id": 74210076,
+   "id": 74210077,
    "kind": "card",
    "card": 35,
    "class": "useful"
   },
   "Wizard Card 36": {
-   "id": 74210077,
+   "id": 74210078,
    "kind": "card",
    "card": 36,
    "class": "useful"
   },
   "Wizard Card 37": {
-   "id": 74210078,
+   "id": 74210079,
    "kind": "card",
    "card": 37,
    "class": "useful"
   },
   "Wizard Card 38": {
-   "id": 74210079,
+   "id": 74210080,
    "kind": "card",
    "card": 38,
    "class": "useful"
   },
   "Wizard Card 39": {
-   "id": 74210080,
+   "id": 74210081,
    "kind": "card",
    "card": 39,
    "class": "useful"
   },
   "Wizard Card 40": {
-   "id": 74210081,
+   "id": 74210082,
    "kind": "card",
    "card": 40,
    "class": "useful"
   },
   "Wizard Card 41": {
-   "id": 74210082,
+   "id": 74210083,
    "kind": "card",
    "card": 41,
    "class": "useful"
   },
   "Wizard Card 42": {
-   "id": 74210083,
+   "id": 74210084,
    "kind": "card",
    "card": 42,
    "class": "useful"
   },
   "Wizard Card 43": {
-   "id": 74210084,
+   "id": 74210085,
    "kind": "card",
    "card": 43,
    "class": "useful"
   },
   "Wizard Card 44": {
-   "id": 74210085,
+   "id": 74210086,
    "kind": "card",
    "card": 44,
    "class": "useful"
   },
   "Wizard Card 45": {
-   "id": 74210086,
+   "id": 74210087,
    "kind": "card",
    "card": 45,
    "class": "useful"
   },
   "Wizard Card 46": {
-   "id": 74210087,
+   "id": 74210088,
    "kind": "card",
    "card": 46,
    "class": "useful"
   },
   "Wizard Card 47": {
-   "id": 74210088,
+   "id": 74210089,
    "kind": "card",
    "card": 47,
    "class": "useful"
   },
   "Wizard Card 48": {
-   "id": 74210089,
+   "id": 74210090,
    "kind": "card",
    "card": 48,
    "class": "useful"
   },
   "Wizard Card 49": {
-   "id": 74210090,
+   "id": 74210091,
    "kind": "card",
    "card": 49,
    "class": "useful"
   },
   "Wizard Card 50": {
-   "id": 74210091,
+   "id": 74210092,
    "kind": "card",
    "card": 50,
    "class": "useful"
   },
   "Wizard Card 51": {
-   "id": 74210092,
+   "id": 74210093,
    "kind": "card",
    "card": 51,
    "class": "useful"
   },
   "Wizard Card 52": {
-   "id": 74210093,
+   "id": 74210094,
    "kind": "card",
    "card": 52,
    "class": "useful"
   },
   "Wizard Card 53": {
-   "id": 74210094,
+   "id": 74210095,
    "kind": "card",
    "card": 53,
    "class": "useful"
   },
   "Wizard Card 54": {
-   "id": 74210095,
+   "id": 74210096,
    "kind": "card",
    "card": 54,
    "class": "useful"
   },
   "Wizard Card 55": {
-   "id": 74210096,
+   "id": 74210097,
    "kind": "card",
    "card": 55,
    "class": "useful"
   },
   "Wizard Card 56": {
-   "id": 74210097,
+   "id": 74210098,
    "kind": "card",
    "card": 56,
    "class": "useful"
   },
   "Wizard Card 57": {
-   "id": 74210098,
+   "id": 74210099,
    "kind": "card",
    "card": 57,
    "class": "useful"
   },
   "Wizard Card 58": {
-   "id": 74210099,
+   "id": 74210100,
    "kind": "card",
    "card": 58,
    "class": "useful"
   },
   "Wizard Card 59": {
-   "id": 74210100,
+   "id": 74210101,
    "kind": "card",
    "card": 59,
    "class": "useful"
   },
   "Wizard Card 60": {
-   "id": 74210101,
+   "id": 74210102,
    "kind": "card",
    "card": 60,
    "class": "useful"
   },
   "Wizard Card 61": {
-   "id": 74210102,
+   "id": 74210103,
    "kind": "card",
    "card": 61,
    "class": "useful"
   },
   "Wizard Card 62": {
-   "id": 74210103,
+   "id": 74210104,
    "kind": "card",
    "card": 62,
    "class": "useful"
   },
   "Wizard Card 63": {
-   "id": 74210104,
+   "id": 74210105,
    "kind": "card",
    "card": 63,
    "class": "useful"
   },
   "Wizard Card 64": {
-   "id": 74210105,
+   "id": 74210106,
    "kind": "card",
    "card": 64,
    "class": "useful"
   },
   "Wizard Card 65": {
-   "id": 74210106,
+   "id": 74210107,
    "kind": "card",
    "card": 65,
    "class": "useful"
   },
   "Wizard Card 66": {
-   "id": 74210107,
+   "id": 74210108,
    "kind": "card",
    "card": 66,
    "class": "useful"
   },
   "Wizard Card 67": {
-   "id": 74210108,
+   "id": 74210109,
    "kind": "card",
    "card": 67,
    "class": "useful"
   },
   "Wizard Card 68": {
-   "id": 74210109,
+   "id": 74210110,
    "kind": "card",
    "card": 68,
    "class": "useful"
   },
   "Wizard Card 69": {
-   "id": 74210110,
+   "id": 74210111,
    "kind": "card",
    "card": 69,
    "class": "useful"
   },
   "Wizard Card 70": {
-   "id": 74210111,
+   "id": 74210112,
    "kind": "card",
    "card": 70,
    "class": "useful"
   },
   "Wizard Card 71": {
-   "id": 74210112,
+   "id": 74210113,
    "kind": "card",
    "card": 71,
    "class": "useful"
   },
   "Wizard Card 72": {
-   "id": 74210113,
+   "id": 74210114,
    "kind": "card",
    "card": 72,
    "class": "useful"
   },
   "Wizard Card 73": {
-   "id": 74210114,
+   "id": 74210115,
    "kind": "card",
    "card": 73,
    "class": "useful"
   },
   "Wizard Card 74": {
-   "id": 74210115,
+   "id": 74210116,
    "kind": "card",
    "card": 74,
    "class": "useful"
   },
   "Wizard Card 75": {
-   "id": 74210116,
+   "id": 74210117,
    "kind": "card",
    "card": 75,
    "class": "useful"
   },
   "Wizard Card 76": {
-   "id": 74210117,
+   "id": 74210118,
    "kind": "card",
    "card": 76,
    "class": "useful"
   },
   "Wizard Card 77": {
-   "id": 74210118,
+   "id": 74210119,
    "kind": "card",
    "card": 77,
    "class": "useful"
   },
   "Wizard Card 78": {
-   "id": 74210119,
+   "id": 74210120,
    "kind": "card",
    "card": 78,
    "class": "useful"
   },
   "Wizard Card 79": {
-   "id": 74210120,
+   "id": 74210121,
    "kind": "card",
    "card": 79,
    "class": "useful"
   },
   "Wizard Card 80": {
-   "id": 74210121,
+   "id": 74210122,
    "kind": "card",
    "card": 80,
    "class": "useful"
   },
   "Wizard Card 81": {
-   "id": 74210122,
+   "id": 74210123,
    "kind": "card",
    "card": 81,
    "class": "useful"
   },
   "Wizard Card 82": {
-   "id": 74210123,
+   "id": 74210124,
    "kind": "card",
    "card": 82,
    "class": "useful"
   },
   "Wizard Card 83": {
-   "id": 74210124,
+   "id": 74210125,
    "kind": "card",
    "card": 83,
    "class": "useful"
   },
   "Wizard Card 84": {
-   "id": 74210125,
+   "id": 74210126,
    "kind": "card",
    "card": 84,
    "class": "useful"
   },
   "Wizard Card 85": {
-   "id": 74210126,
+   "id": 74210127,
    "kind": "card",
    "card": 85,
    "class": "useful"
   },
   "Wizard Card 86": {
-   "id": 74210127,
+   "id": 74210128,
    "kind": "card",
    "card": 86,
    "class": "useful"
   },
   "Wizard Card 87": {
-   "id": 74210128,
+   "id": 74210129,
    "kind": "card",
    "card": 87,
    "class": "useful"
   },
   "Wizard Card 88": {
-   "id": 74210129,
+   "id": 74210130,
    "kind": "card",
    "card": 88,
    "class": "useful"
   },
   "Wizard Card 89": {
-   "id": 74210130,
+   "id": 74210131,
    "kind": "card",
    "card": 89,
    "class": "useful"
   },
   "Wizard Card 90": {
-   "id": 74210131,
+   "id": 74210132,
    "kind": "card",
    "card": 90,
    "class": "useful"
   },
   "Wizard Card 91": {
-   "id": 74210132,
+   "id": 74210133,
    "kind": "card",
    "card": 91,
    "class": "useful"
   },
   "Wizard Card 92": {
-   "id": 74210133,
+   "id": 74210134,
    "kind": "card",
    "card": 92,
    "class": "useful"
   },
   "Wizard Card 93": {
-   "id": 74210134,
+   "id": 74210135,
    "kind": "card",
    "card": 93,
    "class": "useful"
   },
   "Wizard Card 94": {
-   "id": 74210135,
+   "id": 74210136,
    "kind": "card",
    "card": 94,
    "class": "useful"
   },
   "Wizard Card 95": {
-   "id": 74210136,
+   "id": 74210137,
    "kind": "card",
    "card": 95,
    "class": "useful"
   },
   "Wizard Card 96": {
-   "id": 74210137,
+   "id": 74210138,
    "kind": "card",
    "card": 96,
    "class": "useful"
   },
   "Wizard Card 97": {
-   "id": 74210138,
+   "id": 74210139,
    "kind": "card",
    "card": 97,
    "class": "useful"
   },
   "Wizard Card 98": {
-   "id": 74210139,
+   "id": 74210140,
    "kind": "card",
    "card": 98,
    "class": "useful"
   },
   "Wizard Card 99": {
-   "id": 74210140,
+   "id": 74210141,
    "kind": "card",
    "card": 99,
    "class": "useful"
   },
   "Wizard Card 100": {
-   "id": 74210141,
+   "id": 74210142,
    "kind": "card",
    "card": 100,
    "class": "useful"
   },
   "Wizard Card 101": {
-   "id": 74210142,
+   "id": 74210143,
    "kind": "card",
    "card": 101,
    "class": "useful"
   },
   "Bean Bag": {
-   "id": 74210143,
+   "id": 74210144,
    "kind": "bag",
    "class": "useful"
   },
   "Health Upgrade": {
-   "id": 74210144,
+   "id": 74210145,
    "kind": "health",
    "class": "useful"
   },
   "Wiggenweld Potion": {
-   "id": 74210145,
+   "id": 74210146,
    "kind": "heal",
    "class": "filler"
   },
   "25 Beans": {
-   "id": 74210146,
+   "id": 74210147,
    "kind": "beans",
    "amount": 25,
    "class": "filler"
   },
   "10 House Points": {
-   "id": 74210147,
+   "id": 74210148,
    "kind": "house",
    "amount": 10,
    "class": "filler"
