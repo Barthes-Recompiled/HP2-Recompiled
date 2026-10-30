@@ -97,6 +97,8 @@ const Entry kEntries[] = {
      "everything in the camera's view drawn (the field of view slider's width), not only what the doorways show; false: culled as the game does"},
     {"intro_skip", "RECOMP_INTRO_SKIP", Kind::Bool, FIELD(intro_skip), 0, 0,
      "the EA and Warner Bros. logo movies at start-up are left out; false as the Xbox"},
+    {"bean_voice", "RECOMP_BEAN_VOICE", Kind::Bool, FIELD(bean_voice), 0, 0,
+     "Harry's line when he picks up beans; false mutes it (the pickup sound stays)"},
     {"cutscene_skip", "RECOMP_CUTSCENE_SKIP", Kind::Bool, FIELD(cutscene_skip), 0, 0,
      "holding Start or Back for half a second fast-forwards a cutscene to its own end (muted, the picture held); false as the Xbox"},
     {"speakers", "RECOMP_SPEAKERS", Kind::U32, FIELD(speakers), 2, 6,
@@ -487,6 +489,7 @@ extern "C" int app_Speakers(void) { return app::Get().speakers == 6 ? 6 : 2; }
 // pushbuffer path) as the RECOMP_* variables it reads, before any thread starts
 extern "C" int app_DrawAll(void) { return app::Get().draw_all; }
 extern "C" int app_CutsceneSkip(void) { return app::Get().cutscene_skip; }
+extern "C" int app_BeanVoice(void) { return app::Get().bean_voice; }
 extern "C" int app_IntroSkip(void) { return app::Get().intro_skip; }
 extern "C" int app_GroundsWarps(void) { return app::Get().grounds_warps; }
 extern "C" int app_BroomLandFlat(void) { return app::Get().broom_land_flat; }

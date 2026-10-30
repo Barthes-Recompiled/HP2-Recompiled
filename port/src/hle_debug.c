@@ -189,9 +189,28 @@ static DWORD WINAPI snd_watch_thread(LPVOID unused)
     return 0;
 }
 
+extern int app_BeanVoice(void);  /* hpcos.toml bean_voice (renderer/app/app.cpp) */
+
+/* Harry's bean line: the give-item's bean pickups (sub_00081A10, 0x82144..0x822A1) ask sub_00041B20(0x5331AC,
+ * 0x200076A) for it, which plays it here (return 0x41B5C); its return to the give-item is a few words up the stack */
+static int bean_voice(void)
+{
+    if (MEM32(g_esp) != 0x00041B5Cu) return 0;
+    for (uint32_t a = g_esp + 4; a < g_esp + 0x40; a += 4) {
+        uint32_t v = MEM32(a);
+        if (v == 0x000821ADu || v == 0x000821D1u || v == 0x00082342u || v == 0x00082366u) return 1;
+    }
+    return 0;
+}
+
 extern void sub_00040A00_gen(void);
 void sub_00040A00(void)
 {
+    if (!app_BeanVoice() && bean_voice()) {  /* not played: the call's ret 16 */
+        g_eax = 0;
+        g_esp += 20;
+        return;
+    }
     static int on = -1;
     if (on < 0) {
         const char *e = getenv("RECOMP_SND_TRACE");

@@ -23,6 +23,7 @@ enum Id {
     kBrightness, kContrast, kFpsCounter, kDrawAll, kBloom, kBloomStrength, kSharpen, kSaturation, kVibrance, kWarmth,
     kVignette, kGrain, kSpeakers, kKbm, kMouseSensitivity, kMouseInvertY, kMoveMode, kController, kDeadzoneLeft,
     kSensitivityLeft, kDeadzoneRight, kCameraSpeed, kInvertX, kInvertY, kVibration, kVibrationStrength, kCutsceneSkip,
+    kBeanVoice,
     kIntroSkip, kColorBlind, kColorBlindStrength, kExploreGrounds, kBroomLandFlat, kDebugKeys, kAudioTrace, kIds
 };
 
@@ -107,6 +108,7 @@ const Def kDefs[kIds] = {
     /* kVibrationStrength */ Range(&S::vibration_strength, 0, 100, 10, "%"),
     /* kCutsceneSkip */ Flag(&S::cutscene_skip),
     /* kIntroSkip */ Flag(&S::intro_skip),
+    /* kBeanVoice */ Flag(&S::bean_voice),
     /* kColorBlind */ List(&S::colorblind, kColorBlind_, kColorBlindNames),
     /* kColorBlindStrength */ Range(&S::colorblind_strength, 0, 100, 10, "%"),
     /* kExploreGrounds */ Flag(&S::grounds_warps),  // shown inverted: exploring is the path warps off
@@ -178,6 +180,8 @@ const Row kGameplayRows[] = {
     Head("Cutscenes"),
     Val(kCutsceneSkip, "Cutscene fast-forward", true),
     Val(kIntroSkip, "Skip start-up logos", true),
+    Head("Sound"),
+    Val(kBeanVoice, "Bean pickup voice", true),
 };
 const Row kAccessibilityRows[] = {
     Head("Colour blindness"),
@@ -415,6 +419,7 @@ const char* Note(const Row& row) {
         case kCutsceneSkip:
             return "Hold Start or Back: runs it to its own end, muted and with the picture held, so nothing it sets\n"
                    "up is missed.";
+        case kBeanVoice: return "Harry's line each time he picks up beans. Off keeps the pickup sound only.";
         case kIntroSkip: return "The EA and Warner Bros. logo movies; takes effect at the next start.";
         case kColorBlind: return "Shifts the colours a colour-blind player confuses toward ones they can tell apart.";
         case kExploreGrounds:

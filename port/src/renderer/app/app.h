@@ -78,6 +78,7 @@ struct Settings {
     bool broom_land_flat = false;      // xboxrecomp: the broom lands on any flat surface, not only in the game's landing zones (sub_00050300, hle_trainer.c)
     bool draw_all = true;   // xboxrecomp: objects the room's doorway view leaves out tested again against the camera's view as the field of view slider widens it (hle_debug.c)
     bool intro_skip = true;            // xboxrecomp: the start-up logo movies are left out (hle_video.c)
+    bool bean_voice = true;            // Harry's line on picking up beans (hle_debug.c); false mutes it
     bool cutscene_skip = true;         // xboxrecomp: holding Start/Back fast-forwards a cutscene to its end (hle_skip.c)
     uint32_t colorblind = 0;           // ColorBlind: correction filter over the finished frame
     uint32_t colorblind_strength = 100;  // 0 to 100 %
