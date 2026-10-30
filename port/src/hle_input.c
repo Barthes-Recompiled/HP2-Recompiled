@@ -53,6 +53,7 @@ void hpcos_TrainerInject(XBOX_GAMEPAD *g);  /* hle_trainer.c: input a tool asks 
 void hpcos_SkipPad(const XBOX_GAMEPAD *g);  /* hle_skip.c: holding Start/Back fast-forwards a cutscene */
 
 extern int app_KbmOn(void);  /* renderer/app/input.cpp: keyboard and mouse play as controller 1 */
+extern int app_PadCaptureFeed(const XBOX_GAMEPAD *g);  /* the Button Mapping page's wait (input.cpp) */
 extern int app_InputPad(int port, XBOX_GAMEPAD *g);  /* renderer/app/input.cpp: the controls settings; 1 | 2 the sticks
                                                        * keyboard and mouse drove */
 extern void app_InputRumble(uint16_t *left, uint16_t *right);  /* renderer/app/input.cpp: vibration settings */
@@ -402,6 +403,7 @@ static void get_state_direct(void)
     } else {
         /* the F10 options panel has the pad while it is open: the game sees it at rest */
         if (hpcos_MenuOpen()) memset(&s.Gamepad, 0, sizeof(s.Gamepad));
+        XBOX_GAMEPAD as_given = s.Gamepad;  /* the Button Mapping page reads the pad before the remapping */
         /* the controls settings: remapping, deadzones, camera inversion, keyboard and mouse on port 0 */
         int kbm = app_InputPad((int)g_h[h].port, &s.Gamepad);
         /* a PC pad's short range; the movement keys give the tilt they mean (the mouse camera keeps it: its
@@ -412,6 +414,8 @@ static void get_state_direct(void)
         if (g_h[h].port == 0) {
             hpcos_TrainerInject(&s.Gamepad);
             hpcos_SkipPad(&s.Gamepad);
+            hpcos_TrainerInject(&as_given);
+            if (app_PadCaptureFeed(&as_given)) memset(&s.Gamepad, 0, sizeof(s.Gamepad));  /* waiting: at rest */
         }
         /* Alohomora: the L trigger (aim) pressed during its cast moved the spell's light up and to the side
          * (2026-10-25). While Harry's animation record ([0x530354]) is Alohomora's cast (0x1ECEBC), the game sees the
