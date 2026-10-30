@@ -41,6 +41,7 @@ tools/split/output/
 # The game and the port's generated and built files (the repository holds no game content)
 game/
 port/src/recomp/gen/
+port/src/recomp/region/
 port/build*/
 port/dist/
 port/logs/

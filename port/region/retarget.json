@@ -1,0 +1,27 @@
+{
+ "_doc": "tools/region/retarget.py: the hand-written files that hold guest addresses, and the number-like values in the image's range that are plain numbers (kept) or addresses (mapped); \"*\" = every value in those files",
+ "scan": ["src/**/*.c", "src/**/*.cpp", "src/**/*.h", "icall_seeds.json", "tools/patch_gen.py"],
+ "skip": ["src/recomp/gen/*", "src/recomp/region/*"],
+ "include_dirs": ["src", "src/recomp", "src/renderer"],
+ "numbers": [
+  {"values": ["0x20000"], "files": ["src/hle_debug.c"], "why": "a physics body's hit flag (body + 0x20)"},
+  {"values": ["0x180000"], "files": ["src/hle_debug.c"],
+   "why": "loose upper bound for return addresses in a stack walk; the code of both regions ends below it"},
+  {"values": ["0x100000", "0x200000", "0x40400", "0x40000", "0x80800"], "files": ["src/hle_frontend.c"],
+   "why": "menu input button bits"},
+  {"values": ["0x1D0000", "0x500000", "0x50000", "0x60000"], "files": ["src/hle_trainer.c"],
+   "why": "rough windows of game data the trainer's [HDIFF-G] snapshot compares, and their sizes"},
+  {"values": ["0x400000"], "files": ["src/profiler.c", "src/difftest.c"], "why": "table sizes (one slot per guest address below 4 MB)"},
+  {"values": ["0x20000", "0x30000", "0x40000", "0x50000", "0x70000"],
+   "files": ["src/renderer/gpu/render_thread.cpp", "src/renderer/gpu/texture.cpp", "src/renderer/xdk/hle_d3d8.cpp"],
+   "why": "D3D resource Common type bits (0x70000 mask; 0x40000 texture, 0x50000 surface)"},
+  {"values": ["0x80000"], "files": ["src/renderer/xdk/hle_d3d8.cpp"],
+   "why": "D3D resource Common internal reference count increment"}
+ ],
+ "addresses": [
+  {"values": ["0x11000"], "files": ["src/hle_debug.c"], "why": "start of .text (lower bound of a code address check)"},
+  {"values": ["0xFF000", "0x102000"], "files": ["src/hle_hud.c"], "why": "the front end's code range"},
+  {"values": ["0x00134000"], "files": ["src/renderer/xdk/hle_d3d8.cpp"], "why": "D3D_DestroyResource"},
+  {"values": ["*"], "files": ["src/difftest_hle.h", "icall_seeds.json"], "why": "tables of function entry points"}
+ ]
+}
