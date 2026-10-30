@@ -61,3 +61,5 @@ These projects were references for hardware behaviour, XDK details or fixes
 *Harry Potter* and all related names and artwork are trademarks of and © Warner Bros. Entertainment Inc. The game
 is © Electronic Arts. This is an unofficial fan project, not affiliated with or endorsed by Warner Bros.,
 Electronic Arts or Microsoft.
+
+This project has been aided by Claude Code.
