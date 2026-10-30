@@ -28,6 +28,8 @@ void hpcos_ap_item_given(void);
 /* 1 while a slot is bound (connected or offline with a session), for the cards goal and the travel menu */
 int hpcos_ap_active(void);
 int hpcos_ap_cards_goal(void);
+/* a whole-number (or true/false) option of the slot's slot_data, def without a bound slot or that key */
+int hpcos_ap_option(const char *key, int def);
 /* 1 if the slot owns that item (a pass, by catalog name) */
 int hpcos_ap_has(const char *item_name);
 /* the travel page's list, by level: name is the place, level and start (-1 the level's own) where the warp goes,

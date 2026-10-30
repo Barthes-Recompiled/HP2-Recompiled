@@ -9,6 +9,10 @@
  * spell set's bits (0x527F0C), the level being played (0x527B78; a level entered the first time), Gryffindor's house
  * points (0x527EE4). The goal is the credits (level 52).
  *
+ * skip_intro (slot option, on unless the slot says 0): a new game's first frame in The Burrow warps to the Whomping
+ * Willow (level 12), where the story goes after Diagon Alley; The Burrow, Diagon Alley and Knockturn Alley stay on the
+ * travel page.
+ *
  * Items: a card through sub_00081A10(0x2000 + card) (the title's give-item, as a pickup does), a spell by its bit in the
  * spell set, beans into 0x527EE0 up to the bag (0x527EE2), the bag 50 bigger, the health maximum 10 higher (0x527EF6,
  * at most 255) and a refill (sub_00081860), house points through sub_000818C0(points, 0 Gryffindor). Passes are kept
@@ -39,7 +43,7 @@ extern uint32_t hpcos_CallGuest(void (*fn)(void), int n, const uint32_t *args); 
 enum {
     kProgress = 0x527B78, kCards = 0x527E0A, kCardCount = 101, kBeans = 0x527EE0, kBeansMax = 0x527EE2,
     kHouse = 0x527EE4, kHealthMax = 0x527EF6, kSpells = 0x527F0C, kLevelStart = 0x527DFC, kSelectorStart = 0x1EF704,
-    kCardItem = 0x2000, kLevels = 59, kCreditsLevel = 52,
+    kCardItem = 0x2000, kLevels = 59, kCreditsLevel = 52, kSkipToLevel = 12,
 };
 
 static struct {
@@ -143,10 +147,26 @@ static void warp_settle(void)
     }
 }
 
+/* once a run: a new game (The Burrow, story day 0) goes on to Hogwarts */
+static void skip_intro(void)
+{
+    static int done;
+    if (done || !hpcos_ap_active()) return;
+    done = 1;
+    if (!hpcos_ap_option("skip_intro", 1) || MEM32(kProgress) != 0 || MEM32(kProgress + 4) != 0) return;
+    uint32_t a[1] = {kSkipToLevel};
+    hpcos_CallGuest(sub_0004AD50, 1, a);
+    MEM16(kLevelStart) = 0;
+    MEM32(kSelectorStart) = 0;
+    g_warp_level = kSkipToLevel, g_warp_seen = 0;
+    fprintf(stderr, "[AP] new game: on to level %u (skip_intro)\n", (unsigned)kSkipToLevel);
+}
+
 void hpcos_ApFrame(void)
 {
     if (!hpcos_ap_enabled()) return;
     hpcos_ap_frame();
+    skip_intro();
     counters();
     const char *kind;
     int value;

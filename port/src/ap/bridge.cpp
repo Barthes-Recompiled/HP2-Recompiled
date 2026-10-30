@@ -323,6 +323,13 @@ extern "C" void hpcos_ap_item_given(void) {
   }
 }
 extern "C" int hpcos_ap_active(void) { return B().bound; }
+// a whole-number option of the slot (slot_data), or def without a bound slot or the key
+extern "C" int hpcos_ap_option(const char* key, int def) {
+  auto& b = B();
+  if (!b.bound || !key || !b.slot_data.contains(key)) return def;
+  const json& v = b.slot_data[key];
+  return v.is_boolean() ? int(v.get<bool>()) : v.is_number_integer() ? v.get<int>() : def;
+}
 extern "C" int hpcos_ap_cards_goal(void) {
   Bridge& b = B();
   return b.bound && b.slot_data.value("goal", "") == "wizard_cards" ? b.slot_data.value("cards_goal", 0) : 0;
