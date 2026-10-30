@@ -9,9 +9,9 @@
  * spell set's bits (0x527F0C), the level being played (0x527B78; a level entered the first time), Gryffindor's house
  * points (0x527EE4). The goal is the credits (level 52).
  *
- * skip_intro (slot option, on unless the slot says 0): a new game's first frame in The Burrow warps to the Whomping
- * Willow (level 12), where the story goes after Diagon Alley; The Burrow, Diagon Alley and Knockturn Alley stay on the
- * travel page.
+ * skip_intro (slot option, on unless the slot says 0): a new game's first frame in The Burrow warps to the Gryffindor
+ * common room (level 30) on story day 1 ([0x527B7C]); The Burrow, Diagon Alley, Knockturn Alley and the Whomping Willow
+ * stay on the travel page (the Willow with its own pass).
  *
  * Items: a card through sub_00081A10(0x2000 + card) (the title's give-item, as a pickup does), a spell by its bit in the
  * spell set, beans into 0x527EE0 up to the bag (0x527EE2), the bag 50 bigger, the health maximum 10 higher (0x527EF6,
@@ -43,7 +43,7 @@ extern uint32_t hpcos_CallGuest(void (*fn)(void), int n, const uint32_t *args); 
 enum {
     kProgress = 0x527B78, kCards = 0x527E0A, kCardCount = 101, kBeans = 0x527EE0, kBeansMax = 0x527EE2,
     kHouse = 0x527EE4, kHealthMax = 0x527EF6, kSpells = 0x527F0C, kLevelStart = 0x527DFC, kSelectorStart = 0x1EF704,
-    kCardItem = 0x2000, kLevels = 59, kCreditsLevel = 52, kSkipToLevel = 12,
+    kCardItem = 0x2000, kLevels = 59, kCreditsLevel = 52, kSkipToLevel = 30, kSkipToDay = 1,
 };
 
 static struct {
@@ -154,6 +154,7 @@ static void skip_intro(void)
     if (done || !hpcos_ap_active()) return;
     done = 1;
     if (!hpcos_ap_option("skip_intro", 1) || MEM32(kProgress) != 0 || MEM32(kProgress + 4) != 0) return;
+    MEM32(kProgress + 4) = kSkipToDay;
     uint32_t a[1] = {kSkipToLevel};
     hpcos_CallGuest(sub_0004AD50, 1, a);
     MEM16(kLevelStart) = 0;
