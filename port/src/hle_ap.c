@@ -8,6 +8,8 @@
  * compared once a frame: wizard cards (a word per card at 0x527E0A + 2n), beans collected (rises of 0x527EE0), the
  * spell set's bits (0x527F0C), the level being played (0x527B78; a level entered the first time), Gryffindor's house
  * points (0x527EE4). The goal is the credits (level 52).
+ * A census catalog also checks individual pickups in the give-item hook below;
+ * successful grants match original xyz within six units, then constant rewards.
  *
  * skip_intro (slot option, on unless the slot says 0): a new game's first frame in The Burrow warps to the Gryffindor
  * common room (level 30) on story day 1 ([0x527B7C]); The Burrow, Diagon Alley, Knockturn Alley and the Whomping Willow
@@ -35,6 +37,7 @@
 #include "ap/bridge.h"
 
 extern void sub_00081A10(void);
+extern void sub_00081A10_gen(void);
 extern void sub_00081860(void);
 extern void sub_000818C0(void);
 extern void sub_0004AD50(void);
@@ -56,6 +59,31 @@ static struct {
 
 static uint32_t g_warp_level = 0xFFFFFFFFu;
 static DWORD g_warp_seen;
+static int g_ap_giving;
+
+/* Generated body's return/stack/register behavior stays untouched. Capture the
+ * item before it pops the return address; all reporting is native host code.
+ * regen.sh --exclude-manual keeps its body as sub_00081A10_gen. */
+void sub_00081A10(void)
+{
+    uint32_t item = MEM32(g_esp + 4);
+    sub_00081A10_gen();
+    if (!(g_eax & 0xFF) || g_ap_giving || !hpcos_ap_enabled()) return;
+    const char *key = NULL;
+    uint32_t player = MEM32(0x530408);
+    if (player >= 0x80000000u && player <= 0x84000000u - 0xB0) {
+        uint32_t obj = MEM32(player + 0xAC);
+        if (obj >= 0x80000000u && obj <= 0x84000000u - 0x20)
+            key = hpcos_ap_pickup((int)MEM32(kProgress), item,
+                                 MEMF(obj + 0x14), MEMF(obj + 0x18), MEMF(obj + 0x1C));
+    }
+    if (key) hpcos_ap_location(key);
+    else {
+        char reward[32];
+        snprintf(reward, sizeof reward, "reward:%04x", (unsigned)item);
+        if (hpcos_ap_known(reward)) hpcos_ap_location(reward);
+    }
+}
 
 static void check(const char *fmt, int n)
 {
@@ -70,7 +98,9 @@ static void give(const char *kind, int value)
         if (!MEM16(kCards + 2 * value)) {
             g.ap_card[value] = 1;
             uint32_t a[1] = {kCardItem + (uint32_t)value};
+            g_ap_giving++;
             hpcos_CallGuest(sub_00081A10, 1, a);
+            g_ap_giving--;
         }
     } else if (!strcmp(kind, "spell") && value >= 0 && value < 32) {
         g.ap_spells |= 1u << value;

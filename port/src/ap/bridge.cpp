@@ -15,6 +15,7 @@
 #include <nlohmann/json.hpp>
 
 #include <cstdio>
+#include <cmath>
 #include <cstdlib>
 #include <deque>
 #include <filesystem>
@@ -38,10 +39,17 @@ const char kCatalogText[] =
     ;
 
 struct Catalog {
+  struct Pickup {
+    std::string key;
+    int level;
+    unsigned item;
+    float x, y, z;
+  };
   std::string version, game;
   std::map<std::string, int64_t> location_by_key;
   std::map<int64_t, std::string> item_name;
   std::map<std::string, json> item;  // by name
+  std::vector<Pickup> pickups;
 };
 
 const Catalog& Cat() {
@@ -50,7 +58,13 @@ const Catalog& Cat() {
     json j = json::parse(kCatalogText);
     c.version = j["version"];
     c.game = j["game"];
-    for (auto& l : j["locations"]) c.location_by_key[l["key"].get<std::string>()] = l["id"].get<int64_t>();
+    for (auto& l : j["locations"]) {
+      auto key = l["key"].get<std::string>();
+      c.location_by_key[key] = l["id"].get<int64_t>();
+      if (key.rfind("pickup:", 0) == 0)
+        c.pickups.push_back({key, l.at("level").get<int>(), l.at("item").get<unsigned>(),
+                             l.at("x").get<float>(), l.at("y").get<float>(), l.at("z").get<float>()});
+    }
     for (auto& [name, it] : j["items"].items()) {
       c.item_name[it["id"].get<int64_t>()] = name;
       c.item[name] = it;
@@ -284,6 +298,25 @@ extern "C" int hpcos_ap_enabled(void) {
 }
 extern "C" int hpcos_ap_known(const char* key) {
   return key && hpcos_ap_enabled() && Cat().location_by_key.count(key) != 0;
+}
+extern "C" const char* hpcos_ap_pickup(int level, unsigned item, float x, float y, float z) {
+  if (!hpcos_ap_enabled() || !std::isfinite(x) || !std::isfinite(y) || !std::isfinite(z)) return nullptr;
+  const char* key = nullptr;
+  // Six units allows the title's collection/interaction reach plus small
+  // animation offsets. Use original census xyz, not rounded key coordinates;
+  // 3D distance avoids selecting pickups on the floor above/below Harry.
+  float best = 6.0f * 6.0f;
+  for (const auto& p : Cat().pickups) {
+    if (p.level != level || p.item != item) continue;
+    float dx = p.x - x, dy = p.y - y, dz = p.z - z;
+    float d = dx * dx + dy * dy + dz * dz;
+    if (std::isfinite(d) && d <= best) {
+      if (d == best && key) continue;  // sorted catalog gives deterministic ties
+      best = d;
+      key = p.key.c_str();
+    }
+  }
+  return key;
 }
 extern "C" void hpcos_ap_location(const char* key) {
   if (key && hpcos_ap_enabled()) B().Location(key);

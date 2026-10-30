@@ -1,7 +1,7 @@
 """Build port/ap/catalog.json, the Archipelago ID source shared by hpcos.exe's bridge and the apworld. The catalog keeps
 only IDs, display names and the keys the bridge matches; nothing from the game.
 
-    python make_catalog.py [catalog.json]
+    python make_catalog.py [catalog.json] [--census pickups.tsv]
 
 Location keys (what src/hle_ap.c reports):
   card:<n>           wizard card n became owned (its word at 0x527E0A + 2n)
@@ -10,12 +10,16 @@ Location keys (what src/hle_ap.c reports):
   spell:<bit>        that bit of the spell set 0x527F0C became set (learned)
   visit:<level>      that level of the title's table entered for the first time
   house:<n>          Gryffindor reached n house points (0x527EE4)
+  pickup:<lv>:<hex>:<x>:<z>  a successful grant near that census object
+  reward:<hex>       a successful constant scripted reward (census mode)
 IDs are given in a fixed order (by key, sorted), so a rebuild gives the same catalog; the version string carries a hash
 of the keys and the bridge refuses a slot built from another catalog."""
+import argparse
+import csv
 import hashlib
 import json
+import math
 import os
-import sys
 
 GAME = "Harry Potter and the Chamber of Secrets Recomp"
 LOCATION_BASE = 74200000
@@ -39,7 +43,59 @@ BEAN_MILESTONES = [10, 25] + list(range(50, 2001, 50))
 HOUSE_MILESTONES = range(25, 501, 25)
 
 
-def build():
+# Only distinct constant grant sites in give_item_report.md; overlapping generated
+# functions are copies of the same site, not additional rewards.
+REWARDS = (0x2008, 0x200D, 0x2012, 0x2015)
+
+
+def item_kind(item, kinds=None):
+    if kinds and f"{item:04x}" in kinds:
+        return kinds[f"{item:04x}"]
+    category, n = item & 0xF000, item & 0xFFF
+    if category == 0x2000:
+        return f"card {n}"
+    return {0: "spell", 0x4000: "equipment", 0x6000: "health",
+            0x7000: "quest", 0x8000: "quest", 0x9000: "collection",
+            0xA000: "collection"}.get(category, f"item 0x{item:04x}")
+
+
+def read_census(path):
+    """Keep original xyz for matching; whole-unit xz are only the public identity.
+
+    A collision cannot be represented by the requested key. Fail explicitly
+    instead of silently dropping an object or assigning duplicate AP IDs.
+    """
+    with open(str(path) + ".items.json", encoding="utf-8") as f:
+        kinds = json.load(f)
+    return _read_census(path, kinds)
+
+
+def _read_census(path, kinds=None):
+    locs, seen = [], set()
+    with open(path, newline="", encoding="utf-8-sig") as f:
+        rows = csv.DictReader(f, delimiter="\t")
+        if not {"level", "handler", "item_id", "x", "y", "z"}.issubset(rows.fieldnames or []):
+            raise ValueError(f"{path}: expected level, handler, item_id, x, y, z TSV header")
+        for line, row in enumerate(rows, 2):
+            level, item = int(row["level"]), int(row["item_id"], 16)
+            handler = int(row["handler"], 16)
+            x, y, z = (float(row[k]) for k in ("x", "y", "z"))
+            if level not in LEVELS or not 0 <= item <= 0xFFFF or not all(
+                    math.isfinite(v) and abs(v) < 100000 for v in (x, y, z)):
+                raise ValueError(f"{path}:{line}: invalid pickup")
+            rx, rz = round(x), round(z)
+            key = f"pickup:{level}:{item:04x}:{rx}:{rz}"
+            if key in seen:
+                raise ValueError(f"{path}:{line}: duplicate rounded identity {key}; inspect census")
+            seen.add(key)
+            place = LEVELS[level]
+            locs.append(dict(key=key, name=f"{place}: {item_kind(item, kinds)} at ({rx}, {rz})",
+                             region=place, group="Pickups", level=level, item=item,
+                             handler=handler, x=x, y=y, z=z))
+    return locs
+
+
+def build(census=None):
     locs = []
     add = lambda key, name, region, group: locs.append({"key": key, "name": name, "region": region, "group": group})
     for c in range(1, CARDS + 1):
@@ -54,6 +110,15 @@ def build():
         add(f"visit:{lv}", f"Visit {name}", name, "Places")
     for n in HOUSE_MILESTONES:
         add(f"house:{n}", f"Gryffindor {n} house points", "Anywhere", "House Points")
+    if census is not None:
+        # Sidecar is optional: hand-written TSVs remain supported. The live
+        # census resolves the otherwise unknown 3xxx dispatch tables.
+        if os.path.exists(str(census) + ".items.json"):
+            locs.extend(read_census(census))
+        else:
+            locs.extend(_read_census(census))
+        for item in REWARDS:
+            add(f"reward:{item:04x}", f"Scripted reward: {item_kind(item)}", "Anywhere", "Scripted Rewards")
     locs.sort(key=lambda l: l["key"])
     for i, l in enumerate(locs):
         l["id"] = LOCATION_BASE + i
@@ -82,8 +147,11 @@ def build():
 
 
 if __name__ == "__main__":
-    out = sys.argv[1] if len(sys.argv) > 1 else os.path.join(os.path.dirname(__file__), "catalog.json")
-    cat = build()
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("out", nargs="?", default=os.path.join(os.path.dirname(__file__), "catalog.json"))
+    parser.add_argument("--census", help="six-column TSV from tools/ap_census.py")
+    args = parser.parse_args()
+    out, cat = args.out, build(args.census)
     with open(out, "w", newline="\n") as f:
         json.dump(cat, f, indent=1)
         f.write("\n")

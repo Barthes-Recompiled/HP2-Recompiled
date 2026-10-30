@@ -106,6 +106,7 @@ set(GAME_SOURCES
     #   --exclude-manual ../hpcos/src/hle_crc.c
     #   --exclude-manual ../hpcos/src/hle_input.c
     #   --exclude-manual ../hpcos/src/hle_debug.c
+    #   --exclude-manual ../hpcos/src/hle_ap.c
     #   --exclude-manual ../hpcos/src/hle_hud.c
     #   --exclude-manual ../hpcos/src/hle_shots.c
     #   --exclude-manual ../hpcos/src/hle_gringotts.c

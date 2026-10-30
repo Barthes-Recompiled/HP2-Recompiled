@@ -18,6 +18,10 @@ void hpcos_ap_frame(void);
 void hpcos_ap_location(const char *key);
 /* 1 if the catalog has that location key (whether or not it is checked yet) */
 int hpcos_ap_known(const char *key);
+/* Nearest census pickup in this level with this item, within 6 world units in
+ * 3D. Returns an immutable catalog key, or NULL; repeated grants select the same
+ * nearest object (never skip checked locations to consume a neighbour). */
+const char *hpcos_ap_pickup(int level, unsigned item, float x, float y, float z);
 /* the goal is done */
 void hpcos_ap_goal(void);
 /* the next received item to give in the game: its catalog kind ("card", "spell", "beans", ...) and value (card

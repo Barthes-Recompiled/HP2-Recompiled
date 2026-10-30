@@ -30,6 +30,7 @@ python3 -m tools.recomp "$xbe" --all --split 1000 --gen-dir "$port/src/recomp/ge
     --exclude-manual "$(src src/hle_skip.c)" \
     --exclude-manual "$(src src/hle_crc.c)" \
     --exclude-manual "$(src src/hle_debug.c)" \
+    --exclude-manual "$(src src/hle_ap.c)" \
     --exclude-manual "$(src src/hle_dsound.c)" \
     --exclude-manual "$(src src/hle_fade.c)" \
     --exclude-manual "$(src src/hle_frontend.c)" \
