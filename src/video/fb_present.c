@@ -711,14 +711,22 @@ static DWORD WINAPI fb_thread(LPVOID unused)
         r.left = 0; r.top = 0; r.right = ww; r.bottom = hh;
     }
     AdjustWindowRect(&r, WS_OVERLAPPEDWINDOW, FALSE);
+    /* RECOMP_NO_ACTIVATE=1 (unattended tests): the window opens behind the others without taking the focus; the
+     * game runs the same unfocused, driven by the trainer's pad injection */
+    const char *no_act = getenv("RECOMP_NO_ACTIVATE");
+    int quiet = no_act && no_act[0] == '1';
     hwnd = CreateWindowExA(0, "XboxRecompFramebuffer", "Xbox Recomp - Framebuffer",
-                           WS_OVERLAPPEDWINDOW | WS_VISIBLE,
+                           WS_OVERLAPPEDWINDOW | (quiet ? 0 : WS_VISIBLE),
                            CW_USEDEFAULT, CW_USEDEFAULT,
                            r.right - r.left, r.bottom - r.top,
                            NULL, NULL, GetModuleHandleA(NULL), NULL);
     if (!hwnd) {
         InterlockedExchange(&s_fb_running, 0);
         return 0;
+    }
+    if (quiet) {
+        ShowWindow(hwnd, SW_SHOWNOACTIVATE);
+        SetWindowPos(hwnd, HWND_BOTTOM, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
     }
     s_hwnd = hwnd;
     fb_display_from_env();
