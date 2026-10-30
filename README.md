@@ -19,13 +19,14 @@ Xbox disc. The build regenerates the recompiled code from your `default.xbe`.
 
 ## Which disc
 
-**Only the North American (NTSC-U) release works.** Its `default.xbe` has region 1 (North America) and a build
-date of 17 October 2002 in its certificate. The European/PAL release (region 4, built 18 October 2002) contains
-the same game, but its code sits at different addresses, so this build can't run it. A PAL build may come later.
+Both releases work: the North American (NTSC-U) disc, which the code is written for, and the European (PAL) disc,
+whose code sits at different addresses and is built through the region profiles in `port/region/` (see
+[port/DEVELOPING.md](port/DEVELOPING.md), section 3.1). A build is made for one disc and says so if it is given
+the other.
 
 ## Playing
 
-Download the latest release, put your NTSC-U disc's files or the .xiso in a `game` folder beside the executables and
+Download the latest release, put your disc's files or the .xiso in a `game` folder beside the executables and
 start `hpcos_launcher.exe`. Requirements, controls and every option are in [port/README.txt](port/README.txt);
 what changed in each release is in [port/CHANGES.md](port/CHANGES.md).
 
@@ -33,6 +34,15 @@ what changed in each release is in [port/CHANGES.md](port/CHANGES.md).
 
 See [port/DEVELOPING.md](port/DEVELOPING.md): setup, regenerating the code from the XBE, building and making a
 release.
+
+## Thank you, MiddleDucky
+
+This fork exists only because of **[MiddleDucky](https://github.com/MiddleDucky)**, who made the port itself:
+the recompilation, the renderer work, the launcher, and every fix and option in
+[HP-COS-Xbox-Recomp](https://github.com/MiddleDucky/HP-COS-Xbox-Recomp). Everything here is built on that work,
+and each upstream release (v0.2.0 most recently, with its open Hogwarts grounds and broom landing) is merged in
+with gratitude. Thank you, MiddleDucky, for bringing this game to the PC and for sharing it so generously. The fork
+only adds a few things on top (the PAL disc, cutscene and logo skips, Archipelago work in progress).
 
 ## Credits and licences
 
