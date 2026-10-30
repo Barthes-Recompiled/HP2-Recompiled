@@ -10313,8 +10313,9 @@ void xbox_kernel_bridge_init(void)
      * Halo that hung main() in a file-enumeration loop before it reached any
      * initialisation.
      *
-     * Only entries still carrying the ordinal marker are touched, so scanning
-     * back over unrelated .rdata is harmless.
+     * Only entries carrying the ordinal marker with an ordinal the kernel has
+     * (1 to 366) are touched, so scanning back over unrelated .rdata is
+     * harmless.
      */
     {
         const int LOOKBEHIND = 16;   /* entries, i.e. 64 bytes */
@@ -10329,7 +10330,9 @@ void xbox_kernel_bridge_init(void)
             uint32_t current = BRIDGE_MEM32(va);
             int slot;
 
-            if (!(current & 0x80000000)) {
+            /* an import is the marker with a kernel ordinal (1 to 366); other words with the top bit set are data
+             * (negative numbers before Philosopher's Stone's table were taken for imports and overwritten) */
+            if (!(current & 0x80000000) || (current & 0x7FFFFFFF) < 1 || (current & 0x7FFFFFFF) > 366) {
                 continue;            /* NULL separator or ordinary data */
             }
             slot = g_thunk_table_count + i;   /* park these above the main run */

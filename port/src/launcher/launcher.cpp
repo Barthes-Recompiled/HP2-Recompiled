@@ -26,6 +26,8 @@
 #include <backends/imgui_impl_win32.h>
 
 #include "../single_instance.h"
+#include "gamefiles.h"
+#include "font/title_font.inc"  // Magic School One (FontMesa), the title's font
 #include "xiso.h"
 
 extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND, UINT, WPARAM, LPARAM);
@@ -49,7 +51,7 @@ struct Settings {
     uint32_t mouse_sens = 50;
     bool vibration = true, invert_x = false, invert_y = false;
     bool controller = true;  // the in-game F10 option of the same name
-    bool broom = false;      // broom_free_flight
+    bool broom = false;      // broom_land_flat (an old broom_free_flight line reads as it)
     bool cutscene_skip = true;  // cutscene_skip
     bool intro_skip = true;     // intro_skip
 };
@@ -145,7 +147,7 @@ Settings Load() {
     s.mouse_sens = std::clamp(u(Value("mouse_sensitivity"), 50), 1u, 100u);
     s.vibration = Value("vibration") != "false";
     s.controller = Value("controller") != "false";
-    s.broom = Value("broom_free_flight") == "true";
+    s.broom = Value("broom_land_flat") == "true" || Value("broom_free_flight") == "true";
     s.cutscene_skip = Value("cutscene_skip") != "false";
     s.intro_skip = Value("intro_skip") != "false";
     s.invert_x = Value("invert_camera_x") == "true";
@@ -173,7 +175,7 @@ void Save(const Settings& s) {
     SetValue("mouse_sensitivity", std::to_string(s.mouse_sens));
     SetValue("vibration", s.vibration ? "true" : "false");
     SetValue("controller", s.controller ? "true" : "false");
-    SetValue("broom_free_flight", s.broom ? "true" : "false");
+    SetValue("broom_land_flat", s.broom ? "true" : "false");
     SetValue("cutscene_skip", s.cutscene_skip ? "true" : "false");
     SetValue("intro_skip", s.intro_skip ? "true" : "false");
     SetValue("invert_camera_x", s.invert_x ? "true" : "false");
@@ -233,6 +235,38 @@ static void PruneLogs(const std::wstring& runs) {
     }
 }
 
+
+// ── D3D12 under Wine ────────────────────────────────────────────────────────────────────────────────────────────────
+// Wine's own D3D12 (its vkd3d, built into Wine) costs the render thread about 10 us a draw: the Hogwarts grounds drawn
+// whole ran at 48 fps on it (2026-10-28). Proton and its forks (GE-Proton...) bring vkd3d-proton, which does not.
+// Nothing is copied or overridden here: under Wine the page only says so when the d3d12.dll Wine hands out is its own
+// builtin one (a Wine builtin carries "Wine builtin DLL" in its header).
+bool UnderWine() {
+    HMODULE ntdll = GetModuleHandleW(L"ntdll.dll");
+    return ntdll && GetProcAddress(ntdll, "wine_get_version");
+}
+
+bool WineBuiltin(const wchar_t* dll) {
+    HMODULE m = LoadLibraryW(dll);
+    if (!m) return false;
+    char header[0x200];
+    memcpy(header, reinterpret_cast<const char*>(m), sizeof(header));
+    FreeLibrary(m);
+    for (size_t i = 0; i + 16 <= sizeof(header); i++)
+        if (!memcmp(header + i, "Wine builtin DLL", 16)) return true;
+    return false;
+}
+
+// what the page says about it ("" when all is well)
+std::string D3D12Note() {
+    if (!UnderWine() || !WineBuiltin(L"d3d12.dll")) return "";
+    return "This Wine uses its own D3D12, which is slow with many draws: open areas such as the Hogwarts grounds drop "
+           "below 60 fps. Run the game through Proton (Steam's Proton, GE-Proton or another Proton build), which "
+           "brings vkd3d-proton.";
+}
+
+std::string FilesLogLine();
+
 // hpcos.exe beside this one, with run_win.sh's environment
 bool StartGame() {
     // one started from elsewhere while this page was open: the log below would be truncated under it
@@ -272,6 +306,10 @@ bool StartGame() {
     STARTUPINFOW si{};
     si.cb = sizeof(si);
     if (log != INVALID_HANDLE_VALUE) {
+        // the game folder's state first, so a log sent in says whether the files were whole
+        std::string files = FilesLogLine();
+        DWORD put = 0;
+        WriteFile(log, files.data(), DWORD(files.size()), &put, nullptr);
         si.dwFlags = STARTF_USESTDHANDLES;
         si.hStdInput = GetStdHandle(STD_INPUT_HANDLE);
         si.hStdOutput = si.hStdError = log;
@@ -341,6 +379,195 @@ void DrawUnpack() {
     ImGui::End();
 }
 
+// ── Game files ──────────────────────────────────────────────────────────────────────────────────────────────────────
+// game\ checked against the disc's files (gamefiles.h). Every byte is read once, on a fresh start (no game_check.txt
+// made under this list) or after unpacking, and again only from the page's Verify and Repair buttons; every other
+// start looks at the sizes alone (a few ms) and never reads them all on its own. The full check's result, the damaged
+// files by name, is kept in game_check.txt beside the launcher and reported on later starts until a Verify or Repair
+// clears it; a damaged or missing file is named on the page and in the run log (2026-10-29: a player's Burrow had no
+// music, and nothing said whether their files were whole).
+
+struct Check {
+    GameCheck c{};
+    HANDLE thread = nullptr;
+    BOOL contents = FALSE;
+    BOOL finished = FALSE;  // ran to the end (not cancelled, nothing failed)
+    bool ran = false;       // a check has finished this session
+    std::string date;       // when the contents were last checked, "" never
+};
+Check g_check;
+
+std::wstring GameDir() { return ExeDir() + L"game"; }
+std::wstring StampPath() { return ExeDir() + L"game_check.txt"; }
+
+std::string Today() {
+    SYSTEMTIME t;
+    GetLocalTime(&t);
+    char d[16];
+    std::snprintf(d, sizeof d, "%04u-%02u-%02u", t.wYear, t.wMonth, t.wDay);
+    return d;
+}
+
+// the last full check, when it was made under this list
+struct Stamp {
+    bool valid = false;
+    std::string date;
+    std::vector<std::string> damaged;  // its files with wrong contents (missing and wrong-size ones a size check finds)
+};
+
+Stamp ReadStamp() {
+    Stamp st;
+    std::ifstream f(Narrow(StampPath()));
+    gamefiles_Select(GameDir().c_str());  // xboxrecomp fork: the list of the disc in game\ (its id is in the stamp)
+    char want[32];
+    std::snprintf(want, sizeof want, "list %08lX", (unsigned long)gamefiles_ListId());
+    std::string l;
+    if (!std::getline(f, l) || Trim(l) != want) return st;
+    while (std::getline(f, l)) {
+        l = Trim(l);
+        if (l.rfind("date ", 0) == 0) st.date = l.substr(5);
+        else if (l.rfind("damaged ", 0) == 0) st.damaged.push_back(l.substr(8));
+    }
+    st.valid = !st.date.empty();
+    return st;
+}
+
+void WriteStamp() {
+    std::ofstream f(Narrow(StampPath()), std::ios::trunc);
+    char list[32];
+    std::snprintf(list, sizeof list, "list %08lX", (unsigned long)gamefiles_ListId());
+    f << list << "\n"
+      << "date " << g_check.date << "\n";
+    for (int k = 0; k < g_check.c.listed; k++)
+        if (g_check.c.kind[k] == GAMEFILE_CONTENT) f << "damaged " << gamefiles_Name(g_check.c.index[k]) << "\n";
+    f << "# hpcos_launcher.exe's last full read of the game folder. Later starts check the sizes only; the launcher's\n"
+         "# Verify game files button reads everything again (or delete this file to do it at the next start).\n";
+}
+
+DWORD WINAPI CheckThread(void*) {
+    g_check.finished = gamefiles_Check(GameDir().c_str(), g_check.contents, &g_check.c);
+    return 0;
+}
+
+bool StartCheck(bool contents) {
+    g_check.c = GameCheck{};
+    g_check.contents = contents;
+    g_check.finished = FALSE;
+    g_check.thread = CreateThread(nullptr, 0, CheckThread, nullptr, 0, nullptr);
+    return g_check.thread != nullptr;
+}
+
+bool FilesWhole() {
+    return g_check.c.missing + g_check.c.wrong_size + g_check.c.wrong_content == 0;
+}
+
+// after a check: a full one recorded; a size check gets the damage the last full one found added, the stamp kept
+void FinishCheck(const Stamp* st = nullptr) {
+    g_check.ran = true;
+    if (!g_check.finished) return;
+    if (g_check.contents) {
+        g_check.date = Today();
+        WriteStamp();
+    } else if (st) {
+        for (const std::string& name : st->damaged)
+            gamefiles_AddResult(&g_check.c, gamefiles_Find(name.c_str()), GAMEFILE_CONTENT);
+    }
+}
+
+const char* KindName(int kind) {
+    return kind == GAMEFILE_MISSING ? "missing" : kind == GAMEFILE_SIZE ? "wrong size" : "damaged";
+}
+
+// the run log's first line
+std::string FilesLogLine() {
+    char head[200];
+    if (!g_check.ran) return "[FILES] game folder not checked\r\n";
+    if (!g_check.finished) {
+        return "[FILES] game folder check stopped: " + Narrow(g_check.c.error) + "\r\n";
+    }
+    std::snprintf(head, sizeof head, "[FILES] game folder (%s): %d files listed, contents checked %s%s: ", gamefiles_Edition(), gamefiles_Count(),
+                  g_check.date.empty() ? "never" : g_check.date.c_str(), g_check.contents ? "" : ", sizes now");
+    std::string line = head;
+    if (FilesWhole()) return line + "all match the disc\r\n";
+    std::snprintf(head, sizeof head, "%d missing, %d wrong size, %d damaged:", g_check.c.missing, g_check.c.wrong_size,
+                  g_check.c.wrong_content);
+    line += head;
+    for (int k = 0; k < g_check.c.listed; k++)
+        line += std::string(" ") + gamefiles_Name(g_check.c.index[k]) + " (" + KindName(g_check.c.kind[k]) + ")";
+    return line + "\r\n";
+}
+
+void DrawCheck() {
+    ImGuiIO& io = ImGui::GetIO();
+    float sc = io.FontGlobalScale;
+    float pw = 560 * sc;
+    ImGui::SetNextWindowPos(ImVec2(io.DisplaySize.x * 0.5f, io.DisplaySize.y * 0.97f), ImGuiCond_Always, ImVec2(0.5f, 1.0f));
+    ImGui::SetNextWindowSize(ImVec2(pw, 0), ImGuiCond_Always);
+    ImGui::SetNextWindowBgAlpha(0.72f);
+    ImGui::Begin("##check", nullptr,
+                 ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove |
+                     ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings);
+    ImGui::TextUnformatted("Checking the game files");
+    ImGui::TextWrapped("Every file in the game folder is compared with the game disc's, so a damaged or missing one "
+                       "is found before you play. This happens once.");
+    ImGui::Spacing();
+    double done = double(g_check.c.done), total = double(g_check.c.total);
+    char text[64];
+    std::snprintf(text, sizeof text, "%.2f of %.2f GB", done / 1e9, total / 1e9);
+    ImGui::ProgressBar(total > 0 ? float(done / total) : 0.0f, ImVec2(-FLT_MIN, 28 * sc), text);
+    ImGui::TextDisabled("%s", gamefiles_Name(g_check.c.current));
+    ImGui::Spacing();
+    bool cancelling = g_check.c.cancel != 0;
+    if (cancelling) ImGui::BeginDisabled();
+    if (ImGui::Button("Skip", ImVec2(160 * sc, 36 * sc))) InterlockedExchange(&g_check.c.cancel, 1);
+    if (cancelling) ImGui::EndDisabled();
+    ImGui::SameLine();
+    ImGui::TextDisabled("It runs again at the next start.");
+    ImGui::End();
+}
+
+enum class FilesAction { None, Verify, Repair };
+
+// the page's game files part: a line when all is well, the files named and what to do when not
+FilesAction DrawFiles(float sc) {
+    FilesAction act = FilesAction::None;
+    if (g_check.ran && g_check.finished && !FilesWhole()) {
+        int bad = g_check.c.missing + g_check.c.wrong_size + g_check.c.wrong_content;
+        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1, 0.45f, 0.4f, 1));
+        if (g_check.c.missing == gamefiles_Count())
+            ImGui::TextWrapped("No game files found. Put the game's files, or its disc image (.iso), in the 'game' "
+                               "folder beside the launcher.");
+        else
+            ImGui::TextWrapped("%d game file%s %s damaged or missing. The game may crash, or lose sound or "
+                               "pictures, where it uses them:", bad, bad == 1 ? "" : "s", bad == 1 ? "is" : "are");
+        ImGui::PopStyleColor();
+        if (g_check.c.missing != gamefiles_Count()) {
+            int shown = std::min(g_check.c.listed, 6);
+            for (int k = 0; k < shown; k++)
+                ImGui::BulletText("%s (%s)", gamefiles_Name(g_check.c.index[k]), KindName(g_check.c.kind[k]));
+            if (bad > shown) ImGui::TextDisabled("...and %d more (all of them in the run log)", bad - shown);
+            WCHAR image[MAX_PATH];
+            if (xiso_FindAny(GameDir().c_str(), image)) {
+                std::wstring w(image);
+                std::string name = Narrow(w.substr(w.find_last_of(L"\\/") + 1));
+                if (ImGui::Button(("Repair from " + name).c_str(), ImVec2(-FLT_MIN, 34 * sc))) act = FilesAction::Repair;
+            } else {
+                ImGui::TextWrapped("Copy them again from your disc or game dump, or put the disc image (.iso) in the "
+                                   "'game' folder and the launcher writes them again from it.");
+            }
+        }
+    }
+    if (ImGui::Button("Verify game files", ImVec2(200 * sc, 0))) act = FilesAction::Verify;
+    ImGui::SameLine();
+    if (!g_check.ran) ImGui::TextDisabled("Game files not checked.");
+    else if (!g_check.finished) ImGui::TextDisabled("Skipped: runs again next start.");
+    else if (FilesWhole())
+        ImGui::TextDisabled("All match the disc (checked %s).", g_check.date.c_str());
+    else if (g_check.contents) ImGui::TextDisabled("Read through just now.");
+    else ImGui::TextDisabled("Sizes checked; contents %s.", g_check.date.c_str());
+    return act;
+}
+
 // ── Direct3D 11 ─────────────────────────────────────────────────────────────────────────────────────────────────────
 
 ID3D11Device* g_dev = nullptr;
@@ -365,8 +592,16 @@ bool InitD3D(HWND hwnd) {
     sd.Windowed = TRUE;
     sd.SwapEffect = DXGI_SWAP_EFFECT_DISCARD;
     D3D_FEATURE_LEVEL fl;
-    if (FAILED(D3D11CreateDeviceAndSwapChain(nullptr, D3D_DRIVER_TYPE_HARDWARE, nullptr, 0, nullptr, 0, D3D11_SDK_VERSION,
-                                             &sd, &g_swap, &g_dev, &fl, &g_ctx)))
+    // xboxrecomp: d3d11 and what it loads (dxgi) from System32 only, not the exe's folder: a dxgi.dll left beside the
+    // exes (DXVK's, copied there by launchers before 2026-10-28, or put there by a player for the game) was taken by
+    // Wine's own d3d11, which then called DXGID3D10CreateDevice, a function DXVK's dxgi lacks: the launcher crashed
+    // before its window opened (2026-10-29). Not linked, so nothing loads it before this.
+    HMODULE d3d11 = LoadLibraryExW(L"d3d11.dll", nullptr, LOAD_LIBRARY_SEARCH_SYSTEM32);
+    auto create = d3d11 ? reinterpret_cast<PFN_D3D11_CREATE_DEVICE_AND_SWAP_CHAIN>(
+                              reinterpret_cast<void*>(GetProcAddress(d3d11, "D3D11CreateDeviceAndSwapChain")))
+                        : nullptr;
+    if (!create || FAILED(create(nullptr, D3D_DRIVER_TYPE_HARDWARE, nullptr, 0, nullptr, 0, D3D11_SDK_VERSION, &sd,
+                                 &g_swap, &g_dev, &fl, &g_ctx)))
         return false;
     MakeRtv();
     return true;
@@ -398,9 +633,9 @@ int IndexOf(const uint32_t (&values)[N], uint32_t v) {
     return 0;
 }
 
-ImFont* g_title_font = nullptr;  // Georgia, for the title (WinMain)
+ImFont* g_title_font = nullptr;  // Magic School One, for the title (WinMain)
 
-// xboxrecomp (from the hpps port): a dark backdrop with the title as plain text in a Windows font, so the page says
+// xboxrecomp (from the hpps port): a dark backdrop with the title as plain text in Magic School One, so the page says
 // which game it starts without carrying the game's artwork
 void DrawBackground() {
     ImGuiIO& io = ImGui::GetIO();
@@ -409,24 +644,28 @@ void DrawBackground() {
     dl->AddRectFilledMultiColor(ImVec2(0, 0), ImVec2(ww, wh), IM_COL32(40, 96, 62, 255), IM_COL32(40, 96, 62, 255),
                                 IM_COL32(16, 44, 28, 255), IM_COL32(16, 44, 28, 255));
     ImFont* f = g_title_font ? g_title_font : ImGui::GetFont();
-    const char* lines[2] = {"Harry Potter and the", "Chamber of Secrets"};
-    float size = std::min(wh * 0.085f, ww * 0.075f);
-    float y = wh * 0.08f;
-    for (const char* line : lines) {
-        ImVec2 t = f->CalcTextSizeA(size, FLT_MAX, 0, line);
+    // "Harry Potter" on its own line, bigger; the rest of the title under it on one line, made smaller to fit if need be.
+    // Magic School One draws small for its size, so both are bigger than a book face would be
+    struct Line {
+        const char* text;
+        float size;
+    };
+    float big = std::min(wh * 0.15f, ww * 0.13f), rest = big * 0.62f;
+    float rest_w = f->CalcTextSizeA(rest, FLT_MAX, 0, "and the Chamber of Secrets").x;
+    if (rest_w > ww * 0.92f) rest *= ww * 0.92f / rest_w;
+    const Line lines[2] = {{"Harry Potter", big}, {"and the Chamber of Secrets", rest}};
+    float y = wh * 0.05f;
+    for (const Line& l : lines) {
+        ImVec2 t = f->CalcTextSizeA(l.size, FLT_MAX, 0, l.text);
         ImVec2 p((ww - t.x) * 0.5f, y);
-        dl->AddText(f, size, ImVec2(p.x + 2, p.y + 2), IM_COL32(0, 0, 0, 200), line);
-        dl->AddText(f, size, p, IM_COL32(222, 186, 92, 255), line);
-        y += size * 1.15f;
+        dl->AddText(f, l.size, ImVec2(p.x + 2, p.y + 2), IM_COL32(0, 0, 0, 200), l.text);
+        dl->AddText(f, l.size, p, IM_COL32(222, 186, 92, 255), l.text);
+        y += l.size * 0.9f;
     }
-    const char* sub = "Unofficial PC port";
-    float ss = size * 0.38f;
-    ImVec2 t = f->CalcTextSizeA(ss, FLT_MAX, 0, sub);
-    dl->AddText(f, ss, ImVec2((ww - t.x) * 0.5f, y + size * 0.15f), IM_COL32(190, 200, 190, 220), sub);
 }
 
 // returns true when Play is pressed (settings saved)
-bool DrawPage(Settings& s, std::string& error) {
+bool DrawPage(Settings& s, std::string& error, FilesAction& files) {
     ImGuiIO& io = ImGui::GetIO();
     float sc = io.FontGlobalScale;
     float pw = 560 * sc;
@@ -497,11 +736,13 @@ bool DrawPage(Settings& s, std::string& error) {
     ImGui::SameLine(0, 30 * sc);
     ImGui::Checkbox("Invert camera Y", &s.invert_y);
     ImGui::TextDisabled("Key bindings, button remapping and stick settings: F10 > Controls in the game.");
-    ImGui::Checkbox("Land the broom anywhere on the Hogwarts grounds (as on the PS2)", &s.broom);
+    ImGui::Checkbox("Land the broom on any flat surface (experimental)", &s.broom);
     ImGui::Checkbox("Hold Start or Back to fast-forward cutscenes", &s.cutscene_skip);
     ImGui::Checkbox("Skip the start-up logos", &s.intro_skip);
     ImGui::PopItemWidth();
 
+    ImGui::Spacing();
+    files = DrawFiles(sc);
     ImGui::Spacing();
     bool skip = !s.show;
     if (ImGui::Checkbox("Don't show this at the next startup", &skip)) s.show = !skip;
@@ -516,6 +757,12 @@ bool DrawPage(Settings& s, std::string& error) {
     ImGui::SameLine();
     if (ImGui::Button("Quit", ImVec2(bw, 40 * sc))) PostQuitMessage(0);
     if (!error.empty()) ImGui::TextColored(ImVec4(1, 0.4f, 0.4f, 1), "%s", error.c_str());
+    static const std::string d3d12_note = D3D12Note();
+    if (!d3d12_note.empty()) {
+        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1, 0.8f, 0.3f, 1));
+        ImGui::TextWrapped("%s", d3d12_note.c_str());
+        ImGui::PopStyleColor();
+    }
     ImGui::TextDisabled("Saved to hpcos.toml. F10 in the game changes the picture settings too.");
     ImGui::End();
 
@@ -534,9 +781,23 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE, LPSTR, int show) {
     CoInitializeEx(nullptr, COINIT_MULTITHREADED);
     // xboxrecomp: a disc image to unpack first shows its progress page even with the settings page turned off
     bool unpacking = StartUnpack();
-    // the page was turned off: straight to the game with the saved settings, unless Shift is held
+    // xboxrecomp: then the game files: read through when never checked whole under this list (a page with its
+    // progress), otherwise their sizes only, here (a few ms)
+    bool checking = false;
+    if (!unpacking) {
+        Stamp st = ReadStamp();
+        if (!st.valid) {
+            checking = StartCheck(true);  // a fresh start: every byte, once
+        } else {
+            g_check.date = st.date;
+            g_check.contents = FALSE;
+            g_check.finished = gamefiles_Check(GameDir().c_str(), FALSE, &g_check.c);
+            FinishCheck(&st);
+        }
+    }
+    // the page was turned off: straight to the game with the saved settings, unless Shift is held or a file is wrong
     bool shift = (GetAsyncKeyState(VK_SHIFT) & 0x8000) != 0;
-    if (!unpacking && !Load().show && !shift && StartGame()) {
+    if (!unpacking && !checking && FilesWhole() && !Load().show && !shift && StartGame()) {
         CoUninitialize();
         return 0;
     }
@@ -565,16 +826,14 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE, LPSTR, int show) {
     io.IniFilename = nullptr;
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard | ImGuiConfigFlags_NavEnableGamepad;
     io.FontGlobalScale = std::max(1.0f, float(ch) / 600.0f);
-    // the page's own font first (the default), then Windows' Georgia for the title; a Windows font, so nothing is
-    // shipped for it, and the default font stands in
+    // xboxrecomp: the page's own font first (the default), then the title's, Magic School One, built into the exe
+    // (font/title_font.inc); the default font stands in should it fail
     io.Fonts->AddFontDefault();
     {
-        wchar_t windir[MAX_PATH];
-        if (GetWindowsDirectoryW(windir, MAX_PATH)) {
-            std::string font = Narrow(std::wstring(windir) + L"\\Fonts\\georgia.ttf");
-            if (GetFileAttributesA(font.c_str()) != INVALID_FILE_ATTRIBUTES)
-                g_title_font = io.Fonts->AddFontFromFileTTF(font.c_str(), 64.0f);
-        }
+        ImFontConfig cfg;
+        cfg.FontDataOwnedByAtlas = false;  // the exe's own bytes, not the atlas's to free
+        g_title_font = io.Fonts->AddFontFromMemoryTTF(const_cast<unsigned char*>(kTitleFont), int(sizeof kTitleFont),
+                                                      64.0f, &cfg);
     }
     ImGui::StyleColorsDark();
     ImGui::GetStyle().WindowRounding = 6;
@@ -605,15 +864,41 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE, LPSTR, int show) {
                 if (!g_unpack.ok)
                     error = Narrow(g_unpack.p.error) + " The game can't start until it is unpacked; open the launcher "
                             "again to carry on.";
-                else if (!s.show && !shift && StartGame())  // the page was turned off: on to the game as before
-                    started = true;
+                else
+                    checking = StartCheck(true);  // what was written, read back against the list
             }
-        } else if (DrawPage(s, error)) {
+        } else if (checking) {
+            DrawCheck();
+            if (WaitForSingleObject(g_check.thread, 0) == WAIT_OBJECT_0) {
+                CloseHandle(g_check.thread);
+                g_check.thread = nullptr;
+                checking = false;
+                FinishCheck();
+                // the page was turned off: on to the game as before, when every file is whole
+                if (g_check.finished && FilesWhole() && !s.show && !shift && StartGame()) started = true;
+            }
+        } else if (FilesAction files = FilesAction::None; DrawPage(s, error, files)) {
             WCHAR image[MAX_PATH];
             if (xiso_Find((ExeDir() + L"game").c_str(), image))  // stopped part-way: not playable yet
                 error = "The game files are not unpacked yet. Open the launcher again to carry on.";
             else if (StartGame()) started = true;
             else error = "hpcos.exe could not be started (it must sit beside the launcher).";
+        } else if (files == FilesAction::Verify) {
+            error.clear();
+            checking = StartCheck(true);
+        } else if (files == FilesAction::Repair) {
+            // the damaged ones removed, then the image unpacked over the folder: only what is not whole is written
+            WCHAR image[MAX_PATH];
+            error.clear();
+            if (xiso_FindAny(GameDir().c_str(), image)) {
+                gamefiles_RemoveDamaged(GameDir().c_str(), &g_check.c);
+                g_unpack = Unpack{};
+                g_unpack.dir = GameDir();
+                g_unpack.image = image;
+                g_unpack.name = Narrow(g_unpack.image.substr(g_unpack.image.find_last_of(L"\\/") + 1));
+                g_unpack.thread = CreateThread(nullptr, 0, UnpackThread, nullptr, 0, nullptr);
+                unpacking = g_unpack.thread != nullptr;
+            }
         }
         ImGui::Render();
         const float black[4] = {0, 0, 0, 1};
@@ -628,6 +913,12 @@ done:
         InterlockedExchange(&g_unpack.p.cancel, 1);
         WaitForSingleObject(g_unpack.thread, INFINITE);
         CloseHandle(g_unpack.thread);
+    }
+    // closed while checking: stopped, no stamp written, so the next start checks again
+    if (g_check.thread) {
+        InterlockedExchange(&g_check.c.cancel, 1);
+        WaitForSingleObject(g_check.thread, INFINITE);
+        CloseHandle(g_check.thread);
     }
     ImGui_ImplDX11_Shutdown();
     ImGui_ImplWin32_Shutdown();

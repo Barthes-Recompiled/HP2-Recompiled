@@ -42,6 +42,19 @@ struct Settings {
     uint32_t brightness = 50;          // 0 to 100, 50 each leaves the picture alone
     uint32_t contrast = 50;
     bool fps_counter = false;
+    // xboxrecomp: post-processing (d3d12.cpp): bloom over the 3D scene before the HUD, sharpening and grading over
+    // the finished frame. Off or neutral by default: the console's picture
+    bool bloom = false;
+    uint32_t bloom_strength = 40;      // 0 to 100
+    uint32_t sharpen = 0;              // 0 (off) to 100
+    uint32_t saturation = 100;         // 0 to 200 %, 100 as the game
+    uint32_t vibrance = 0;             // 0 to 100: saturation for the dull colours more than the vivid
+    uint32_t warmth = 50;              // 0 (cool) to 100 (warm), 50 as the game
+    bool dof = false;                  // cutscenes: what lies behind the nearest figure blurs (no cutscene test here yet)
+    uint32_t dof_strength = 50;        // 0 to 100
+    uint32_t vignette = 0;             // 0 (off) to 100: the corners darkened
+    uint32_t grain = 0;                // 0 (off) to 100: moving film grain
+    uint32_t fov = 100;                // xboxrecomp: field of view, % of the game's (hle_shots.c), 80 to 130
     bool vsync = true;                 // RECOMP_VSYNC
     uint32_t aniso = 0;                // RECOMP_ANISO, 0 as the game asks
     uint32_t msaa = 0;                 // RECOMP_MSAA samples, 0 off
@@ -60,10 +73,11 @@ struct Settings {
     uint32_t fps_limit = 0;            // 0 the game's own rate, 30: each frame two vblanks at least
     bool audio_trace = false;          // xboxrecomp: F10 Debug: [DSOUND] lines for each sound (not saved)
     bool debug_keys = false;           // xboxrecomp: F7/F8/F9 renderer debug keys (also RECOMP_DEBUG_KEYS)
-    bool draw_all = true;              // xboxrecomp: objects tested against the camera's view, not a room's portal (hle_debug.c over sub_00034950)
+    bool grounds_warps = false;        // xboxrecomp: the grounds' path warps (tools/patch_gen.py, sub_000E6860); off: Harry walks on past them
+    bool broom_land_flat = false;      // xboxrecomp: the broom lands on any flat surface, not only in the game's landing zones (sub_00050300, hle_trainer.c)
+    bool draw_all = true;   // xboxrecomp: objects the room's doorway view leaves out tested again against the camera's view as the field of view slider widens it (hle_debug.c)
     bool intro_skip = true;            // xboxrecomp: the start-up logo movies are left out (hle_video.c)
     bool cutscene_skip = true;         // xboxrecomp: holding Start/Back fast-forwards a cutscene to its end (hle_skip.c)
-    bool broom_free_flight = false;    // xboxrecomp: land the broom anywhere over ground on the grounds (hle_broom.c over sub_0002D3E0)
     uint32_t colorblind = 0;           // ColorBlind: correction filter over the finished frame
     uint32_t colorblind_strength = 100;  // 0 to 100 %
     uint32_t speakers = 2;             // xboxrecomp: 2 stereo, 6 5.1 surround (hle_dsound.c, at start)

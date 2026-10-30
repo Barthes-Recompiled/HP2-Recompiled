@@ -242,6 +242,7 @@ extern int  xbox_OhciHandleMmio(void *ctx, uint32_t xbox_va);
  * dword and the next one (DR0/DR1, main guest thread only) and logs each hit
  * with the host RIP (symbolise with nm on the exe) and the guest return address. */
 static uint32_t g_watch_va;
+static int g_watch_jumps;
 
 /* Arms the watch on the calling thread, which must be the guest thread. Also called at run time by the D3D8 HLE's
  * morph trace (hle_d3d8.cpp, RECOMP_MORPH_TRACE) once it has found a vertex buffer the CPU rewrites each frame. */
@@ -256,6 +257,14 @@ void hpcos_WatchArm(uint32_t va)
     c.Dr7 = 1 | 4 | (1u << 16) | (3u << 18) | (1u << 20) | (3u << 22);  /* L0 L1, write, 4 bytes */
     fprintf(stderr, "[WATCH] %08X..%08X: %s\n", g_watch_va, g_watch_va + 7,
             SetThreadContext(GetCurrentThread(), &c) ? "armed" : "SetThreadContext failed");
+}
+
+/* the watch on a position (x, y): only jumps are logged, with the guest's call sites (hle_trainer.c's trigger trace
+ * on Harry's object, to find the code that warps him) */
+void hpcos_WatchJumps(uint32_t va)
+{
+    g_watch_jumps = 1;
+    hpcos_WatchArm(va);
 }
 
 static void watch_arm(void)
@@ -790,7 +799,25 @@ static LONG CALLBACK veh_handler(PEXCEPTION_POINTERS ep)
         static int hits;
         uint32_t lo = *(uint32_t *)((uint8_t *)g_xbox_mem_offset + g_watch_va);
         uint32_t hi = *(uint32_t *)((uint8_t *)g_xbox_mem_offset + g_watch_va + 4);
-        if (hits++ < 200)
+        if (g_watch_jumps) {
+            /* hpcos_WatchJumps: only a write that moves the pair by more than 1.5, with the guest's call sites */
+            static float px, py;
+            float x = *(float *)&lo, y = *(float *)&hi, dx = x - px, dy = y - py;
+            if (dx * dx + dy * dy > 2.25f) {
+                char line[512];
+                int n = snprintf(line, sizeof line, "[WATCH] jump %g %g -> %g %g RIP=0x%llX from", px, py, x, y,
+                                 (unsigned long long)ep->ContextRecord->Rip);
+                for (uint32_t i = 0, k = 0; i < 1024 && k < 16 && n < (int)sizeof line - 12; i++) {
+                    uint32_t v = *(uint32_t *)((uint8_t *)g_xbox_mem_offset + g_esp + 4 * i);
+                    if (v < 0x11005 || v >= 0x130620) continue;
+                    uint8_t *c = (uint8_t *)g_xbox_mem_offset + v;
+                    if (c[-5] == 0xE8 || c[-2] == 0xFF || c[-3] == 0xFF || c[-6] == 0xFF)
+                        n += snprintf(line + n, sizeof line - n, " %08X", v), k++;
+                }
+                fprintf(stderr, "%s\n", line);
+            }
+            px = x, py = y;
+        } else if (hits++ < 200)
             fprintf(stderr, "[WATCH] write: %08X %08X (%g %g) RIP=0x%llX guest esp=%08X ret %08X %08X %08X\n",
                     lo, hi, *(float *)&lo, *(float *)&hi, (unsigned long long)ep->ContextRecord->Rip, g_esp,
                     *(uint32_t *)((uint8_t *)g_xbox_mem_offset + g_esp), *(uint32_t *)((uint8_t *)g_xbox_mem_offset + g_esp + 4), *(uint32_t *)((uint8_t *)g_xbox_mem_offset + g_esp + 8));
@@ -891,6 +918,102 @@ static LONG CALLBACK veh_handler(PEXCEPTION_POINTERS ep)
 
 /* ── WinMain ───────────────────────────────────────────────── */
 
+
+/* (upstream's check, the canonical build's fallback for an XBE whose SHA-1 is no profile's) The game edition this recompile was made from: its XBE's title ID, entry point, section count and code section
+ * (.text). Another edition (another region, a multi-language release) lays its code out differently, and the
+ * recompiled code would run it as garbage and stop at once; it is turned away with a message naming the edition.
+ * Header-only changes (a region-free patch) keep these and pass. */
+static int xbe_is_canonical_edition(const uint8_t *x, size_t n)
+{
+    const uint32_t want_tid = 0x4541000Eu, want_entry = 0x0010E698u, want_sections = 13u;
+    const uint32_t want_text_va = 0x00011000u, want_text_size = 1177120u;
+    uint32_t tid = 0, entry = 0, sections = 0, text_va = 0, text_size = 0;
+#define XBE32(o) (*(const uint32_t *)(x + (o)))
+    if (n >= 0x180 && XBE32(0) == 0x48454258u) {  /* "XBEH" */
+        uint32_t base = XBE32(0x104), cert = XBE32(0x118) - base, sh = XBE32(0x120) - base;
+        sections = XBE32(0x11C);
+        entry = XBE32(0x128) ^ 0xA8FC57ABu;  /* retail key */
+        if (entry != want_entry && (XBE32(0x128) ^ 0x94859D4Bu) == want_entry) entry = want_entry;  /* debug key */
+        if ((size_t)cert + 12 <= n) tid = XBE32(cert + 8);
+        if ((size_t)sh + 12 <= n) text_va = XBE32(sh + 4), text_size = XBE32(sh + 8);
+    }
+#undef XBE32
+    if (tid == want_tid && entry == want_entry && sections == want_sections && text_va == want_text_va &&
+        text_size == want_text_size)
+        return 1;
+    printf("XBE edition mismatch: title ID %08X entry %08X, %u sections, code %08X %u bytes, %zu bytes in all; "
+           "expected title ID %08X entry %08X, %u sections, code %08X %u bytes (2174976 bytes)\n",
+           tid, entry, sections, text_va, text_size, n, want_tid, want_entry, want_sections, want_text_va, want_text_size);
+    char msg[640];
+    snprintf(msg, sizeof msg,
+             "This recompile is made from the NTSC-US (USA) release of Harry Potter and the Chamber of Secrets.\n\n"
+             "The default.xbe in the 'game' folder is a different edition (title ID %08X, %zu bytes, %u sections),\n"
+             "whose code does not match, so it cannot run.\n\n"
+             "Please use the NTSC-US (USA) release (default.xbe: title ID %08X, 2174976 bytes).",
+             tid, n, sections, want_tid);
+    MessageBoxA(NULL, msg, "Unsupported game version", MB_ICONERROR);
+    return 0;
+}
+
+/* xboxrecomp fork: the regional XBEs (port/region/*.json, tools/region/README.md). A build is made for one of them
+ * (REGION_SHA1, from region.cmake); REGION_KNOWN lists every supported one as "name=sha1,...". The XBE's SHA-1 picks:
+ * this build's disc passes; another supported disc is turned away naming the build it needs (the recompiled code is
+ * laid out for one disc); an XBE no profile knows (a header-patched copy) gets upstream's structural check on the
+ * canonical build, and runs with a warning on another region's build. */
+static const char *edition_label(const char *profile)
+{
+    if (strstr(profile, "usa")) return "NTSC-US (USA)";
+    if (strstr(profile, "eur")) return "PAL (Europe)";
+    return profile;
+}
+
+/* the profile name REGION_KNOWN gives a SHA-1 into name (empty when none) */
+static void edition_name(const char *sha, char *name, size_t cap)
+{
+    const char *p = REGION_KNOWN;
+    name[0] = 0;
+    while (*p) {
+        const char *eq = strchr(p, '='), *end = strchr(p, ',');
+        if (!end) end = p + strlen(p);
+        if (eq && eq < end && (size_t)(end - eq - 1) == strlen(sha) && !strncmp(eq + 1, sha, strlen(sha))) {
+            snprintf(name, cap, "%.*s", (int)(eq - p), p);
+            return;
+        }
+        p = *end ? end + 1 : end;
+    }
+}
+
+static int xbe_is_expected_edition(const uint8_t *x, size_t n)
+{
+    XBOX_SHA_CONTEXT c;  /* the kernel's SHA-1 (kernel_crypto.c) */
+    UCHAR d[20];
+    char sha[41], have[64], want[64];
+    xbox_XcSHAInit(&c);
+    xbox_XcSHAUpdate(&c, x, (ULONG)n);
+    xbox_XcSHAFinal(&c, d);
+    for (int i = 0; i < 20; i++) snprintf(sha + 2 * i, 3, "%02x", d[i]);
+    edition_name(sha, have, sizeof have);
+    edition_name(REGION_SHA1, want, sizeof want);
+    printf("XBE sha1 %s (%s); this build is for %s\n", sha, have[0] ? have : "no profile", want);
+    if (!strcmp(sha, REGION_SHA1)) return 1;
+    if (have[0]) {
+        char msg[640];
+        snprintf(msg, sizeof msg,
+                 "This build of Harry Potter and the Chamber of Secrets is made for the %s disc.\n\n"
+                 "The default.xbe in the 'game' folder is from the %s disc, which this build cannot run.\n\n"
+                 "Please use the %s build, or the %s disc's files.",
+                 edition_label(want), edition_label(have), edition_label(have), edition_label(want));
+        MessageBoxA(NULL, msg, "Different game version", MB_ICONERROR);
+        return 0;
+    }
+#ifdef REGION_RETARGETED
+    printf("XBE edition: no profile has this SHA-1 (a patched header?); running it as %s\n", want);
+    return 1;
+#else
+    return xbe_is_canonical_edition(x, n);
+#endif
+}
+
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
                    LPSTR lpCmdLine, int nCmdShow)
 {
@@ -964,6 +1087,23 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
     SymInitialize(GetCurrentProcess(), NULL, TRUE);
     AddVectoredExceptionHandler(1, veh_handler);
 
+    /* which D3D12 the game got: under Wine its own (a Wine builtin, "Wine builtin DLL" in its header) costs the render
+     * thread ~10 us a draw (the Hogwarts grounds at 48 fps, 2026-10-28); Proton's vkd3d-proton does not */
+    {
+        HMODULE ntdll = GetModuleHandleA("ntdll.dll"), d3d12 = GetModuleHandleA("d3d12.dll");
+        int wine = ntdll && GetProcAddress(ntdll, "wine_get_version"), builtin = 0;
+        char path[MAX_PATH] = "";
+        if (d3d12) {
+            GetModuleFileNameA(d3d12, path, MAX_PATH);
+            for (int i = 0; i + 16 <= 0x200; i++)
+                if (!memcmp((const char *)d3d12 + i, "Wine builtin DLL", 16)) builtin = 1;
+        }
+        if (wine && builtin)
+            fprintf(stderr, "[PORT] D3D12: Wine's own (%s): slow with many draws; run through Proton for vkd3d-proton\n", path);
+        else
+            fprintf(stderr, "[PORT] D3D12: %s (%s)\n", path, !wine ? "Windows" : "Wine, not its builtin: vkd3d-proton");
+    }
+
     /* Step 1: Load XBE */
     if (!load_xbe(YOUR_GAME_XBE_PATH, &xbe_data, &xbe_size)) {
         MessageBoxA(NULL, "Failed to load default.xbe.\n"
@@ -972,6 +1112,10 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
         return 1;
     }
     printf("XBE loaded: %zu bytes\n", xbe_size);
+    if (!xbe_is_expected_edition(xbe_data, xbe_size)) {
+        free(xbe_data);
+        return 1;
+    }
 
     /* Step 2: Initialize Xbox memory layout */
     printf("Initializing Xbox memory layout...\n");

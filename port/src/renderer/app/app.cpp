@@ -21,6 +21,7 @@
 
 #include "core/log.h"
 
+extern "C" uint32_t hpcos_FovPercent(void) { return std::clamp<uint32_t>(app::Get().fov, 80, 130); }
 extern "C" void* xbox_FramebufferWindowHwnd(void);
 extern "C" void xbox_FramebufferWindowStart(void);
 extern "C" void xbox_FramebufferWindowSetDisplay(int mode, int w, int h);
@@ -42,6 +43,10 @@ struct Entry {
 
 #define FIELD(m) offsetof(Settings, m)
 const Entry kEntries[] = {
+    // xboxrecomp: first in the file, where a player looks for how to get the launcher's page back
+    {"show_launcher", nullptr, Kind::Bool, FIELD(show_launcher), 0, 0,
+     "the launcher's settings page at startup: true shows it, false starts the game at once (also: hold Shift while "
+     "starting, or F10 > Show the launcher at startup)"},
     {"display_mode", "RECOMP_DISPLAY_MODE", Kind::Display, FIELD(display_mode), 0, 0,
      "'windowed', 'borderless' (covers the monitor) or 'fullscreen' (switches the monitor to width x height)"},
     {"width", nullptr, Kind::U32, FIELD(width), 0, 16384,
@@ -63,26 +68,36 @@ const Entry kEntries[] = {
     {"contrast", nullptr, Kind::U32, FIELD(contrast), 0, 100, nullptr},
     {"vsync", "RECOMP_VSYNC", Kind::Bool, FIELD(vsync), 0, 0, nullptr},
     {"fps_counter", nullptr, Kind::Bool, FIELD(fps_counter), 0, 0, nullptr},
+    {"bloom", "RECOMP_BLOOM", Kind::Bool, FIELD(bloom), 0, 0,
+     "a glow round bright parts of the 3D scene (not the HUD)"},
+    {"bloom_strength", nullptr, Kind::U32, FIELD(bloom_strength), 0, 100, nullptr},
+    {"sharpen", "RECOMP_SHARPEN", Kind::U32, FIELD(sharpen), 0, 100, "contrast adaptive sharpening, 0 off"},
+    {"saturation", nullptr, Kind::U32, FIELD(saturation), 0, 200, "colour grading: saturation %, 100 as the game"},
+    {"vibrance", nullptr, Kind::U32, FIELD(vibrance), 0, 100, "colour grading: dull colours up more than vivid ones, 0 off"},
+    {"warmth", nullptr, Kind::U32, FIELD(warmth), 0, 100, "colour grading: 0 cool, 50 as the game, 100 warm"},
+    {"vignette", nullptr, Kind::U32, FIELD(vignette), 0, 100, "the picture's corners darkened, 0 off"},
+    {"grain", nullptr, Kind::U32, FIELD(grain), 0, 100, "film grain, 0 off"},
+    {"fov", "RECOMP_FOV", Kind::U32, FIELD(fov), 80, 130, "field of view, % of the game's"},
     {"controller", nullptr, Kind::Bool, FIELD(controller), 0, 0,
      "false: the game ignores the PC's controller (keyboard and mouse still play)"},
     {"async_shaders", "RECOMP_ASYNC_SHADERS", Kind::Bool, FIELD(async_shaders), 0, 0,
      "a draw whose pipeline is still compiling is skipped instead of waited for"},
-    {"show_launcher", nullptr, Kind::Bool, FIELD(show_launcher), 0, 0,
-     "hpcos_launcher.exe shows its settings page; false starts the game at once (hold Shift to see it)"},
     {"start_menu", "RECOMP_START_MENU", Kind::Bool, FIELD(start_menu), 0, 0,
      "the settings page before the game starts (aspect ratio, resolution, quality)"},
     {"fps_limit", "RECOMP_FPS_LIMIT", Kind::Fps, FIELD(fps_limit), 0, 0,
      "frame rate: 0, the game's own (59.94; it advances a fixed step a frame, so no other rate)"},
     {"debug_keys", nullptr, Kind::Bool, FIELD(debug_keys), 0, 0,
      "renderer debug keys: F7 depth test always passes, F8 log depth for all draws, F9 alpha test off"},
+    {"grounds_warps", "RECOMP_GROUNDS_WARPS", Kind::Bool, FIELD(grounds_warps), 0, 0,
+     "the Hogwarts grounds' path warps (walking onto a path's end fades out and puts Harry at its other end, and only that area of the grounds is shown); false: F10's Explore Hogwarts Grounds, he walks on and every area is shown; the story's cutscenes and lessons on the grounds play normally, and flying practice can only be repeated later by turning it off"},
+    {"broom_land_flat", "RECOMP_BROOM_LAND_FLAT", Kind::Bool, FIELD(broom_land_flat), 0, 0,
+     "the broom lands on any flat surface up to 3 under Harry (roofs, walls' tops), not only in the game's landing zones"},
     {"draw_all_objects", "RECOMP_DRAW_ALL", Kind::Bool, FIELD(draw_all), 0, 0,
-     "draw every object in the camera's view, also those a room seen through a doorway or arch would leave out (parts of the library); false as the Xbox"},
+     "everything in the camera's view drawn (the field of view slider's width), not only what the doorways show; false: culled as the game does"},
     {"intro_skip", "RECOMP_INTRO_SKIP", Kind::Bool, FIELD(intro_skip), 0, 0,
      "the EA and Warner Bros. logo movies at start-up are left out; false as the Xbox"},
     {"cutscene_skip", "RECOMP_CUTSCENE_SKIP", Kind::Bool, FIELD(cutscene_skip), 0, 0,
      "holding Start or Back for half a second fast-forwards a cutscene to its own end (muted, the picture held); false as the Xbox"},
-    {"broom_free_flight", "RECOMP_BROOM_FREE_FLIGHT", Kind::Bool, FIELD(broom_free_flight), 0, 0,
-     "on the Hogwarts grounds the broom lands anywhere over the ground, not only on the landing pads (as on the PS2); false as the Xbox"},
     {"speakers", "RECOMP_SPEAKERS", Kind::U32, FIELD(speakers), 2, 6,
      "2 stereo, 6 5.1 surround (the console's speaker mix, each channel to its own speaker); takes a restart"},
     {"colorblind", nullptr, Kind::ColorBlind, FIELD(colorblind), 0, 0,
@@ -252,6 +267,7 @@ bool ReadFile(Settings& s) {
         size_t eq = line.find('=');
         if (eq == std::string::npos) continue;
         std::string key = Trim(line.substr(0, eq));
+        if (key == "broom_free_flight") key = "broom_land_flat";  // the fork's own broom option, now upstream's (2026-10-30)
         for (const Entry& e : kEntries) {
             if (key == e.key && !Parse(s, e, line.substr(eq + 1)))
                 LOGW("hpcos.toml: %s = %s not understood, kept %s", e.key, Trim(line.substr(eq + 1)).c_str(),
@@ -469,9 +485,10 @@ extern "C" int app_Speakers(void) { return app::Get().speakers == 6 ? 6 : 2; }
 // main.c, first thing: the settings read, and handed to the C side (the window, the title's widescreen camera, the
 // pushbuffer path) as the RECOMP_* variables it reads, before any thread starts
 extern "C" int app_DrawAll(void) { return app::Get().draw_all; }
-extern "C" int app_BroomFreeFlight(void) { return app::Get().broom_free_flight; }
 extern "C" int app_CutsceneSkip(void) { return app::Get().cutscene_skip; }
 extern "C" int app_IntroSkip(void) { return app::Get().intro_skip; }
+extern "C" int app_GroundsWarps(void) { return app::Get().grounds_warps; }
+extern "C" int app_BroomLandFlat(void) { return app::Get().broom_land_flat; }
 
 extern "C" void hpcos_SettingsInit(void) {
     const app::Settings& s = app::Get();

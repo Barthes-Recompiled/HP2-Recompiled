@@ -1,5 +1,26 @@
 # Changes
 
+## v0.2.0 (2026-10-30), compared with v0.1.0
+
+### New: Enhancements (F10)
+- **Explore Hogwarts Grounds (experimental).** Walk the whole grounds freely: the paths no longer fade out to their other end, every area stays drawn and solid, and the destination names and warp prompts are hidden. The low walls at the entrance can be crossed; the grounds' outer limits stay. The story's cutscenes and lessons on the grounds still play (the first flying lesson starts in its arch between the torches). Flying practice can only be repeated with the option off. Harry can't walk onto the lake.
+  - **At night** the whole night castle is drawn, the flying practice arch takes Harry to the field and the field's exit brings him back, and the broom button shows as unavailable.
+- **Land the broom on any flat surface (experimental).** Over a flat roof or a wall's top, the land button lands as in one of the game's landing zones (never on the lake).
+
+### Graphics
+- **Post-processing** (F10 > Graphics): bloom, sharpening, saturation, vibrance, warmth, vignette and film grain, all off or neutral by default.
+- **Field of view slider (experimental)**, 80 to 130 % of the game's.
+- **The castle's rooms no longer come and go** with where the camera looks when "Draw everything in view" is on, and the grounds drawn whole no longer make the frame wait for vertex uploads.
+
+### The launcher
+- **Checks your game files.** On the first start, after unpacking a disc image, and from "Verify game files", every file is compared with the disc's; damaged or missing ones are named, and "Repair" writes them again from a disc image in the game folder. Later starts only check the sizes. Each log's first line says whether the files were whole.
+- **A new look:** the title in the Magic School One font over a dark green backdrop, with no game artwork; the exes have a wand icon in the same colours.
+- **No more crash under Wine** when a DXVK `dxgi.dll` sits beside the exes; under Wine's own slow Direct3D 12 the page suggests running through Proton.
+- **`show_launcher` is the first setting in `hpcos.toml`**, to bring the page back (or hold Shift, or F10).
+
+### Other
+- **Another edition's game files are turned away with a clear message** instead of the game quitting at once (only the NTSC-U release works).
+
 ## v0.1.0 (2026-10-25): first release
 
 The whole game, from the Burrow to the Chamber, runs natively on Windows 10 and 11, with no emulator. It needs the files from your own Xbox disc, or a disc image. Everything below is what the port adds to, or changes from, the original Xbox game.

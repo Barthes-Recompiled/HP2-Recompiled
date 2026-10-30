@@ -63,6 +63,44 @@ static const Shot *current_shot(void)
     return NULL;
 }
 
+/* Field of view (F10 Graphics, % of the game's). The half angle at [0x50C1DC] (radians) is read by the projection
+ * builders (sub_00011100 and its second entry sub_00011106) and by the culling (sub_00024E00, sub_000254F0,
+ * sub_00025E10, sub_00026830, sub_00027090, sub_000274D0: what lies outside the view cone is not drawn), so all of them
+ * see it widened, for their call only: the camera code keeps the game's angle. The percentage scales the half
+ * angle's tangent, so 120 % shows 20 % more of the scene each way. This title has no cutscene test: the slider holds in
+ * cutscenes too, apart from the shots kShots narrows */
+uint32_t hpcos_FovPercent(void);  /* renderer/app/app.cpp: 80 to 130, 100 as the game */
+
+int hpcos_InGameView(void);       /* hle_video.c: Harry's update running, no 4:3 screen up (the inventory keeps the game's lens) */
+
+static void fov_call(void (*gen)(void))
+{
+    uint32_t pct = hpcos_InGameView() ? hpcos_FovPercent() : 100u;
+    float half = MEMF(HALF_FOV);
+    if (pct == 100 || !(half > 0.01f && half < 1.5f)) {
+        gen();
+        return;
+    }
+    MEMF(HALF_FOV) = atanf(tanf(half) * (float)pct / 100.0f);
+    gen();
+    MEMF(HALF_FOV) = half;
+}
+
+extern void sub_00011106_gen(void);
+void sub_00011106(void) { fov_call(sub_00011106_gen); }
+extern void sub_00024E00_gen(void);
+void sub_00024E00(void) { fov_call(sub_00024E00_gen); }
+extern void sub_000254F0_gen(void);
+void sub_000254F0(void) { fov_call(sub_000254F0_gen); }
+extern void sub_00025E10_gen(void);
+void sub_00025E10(void) { fov_call(sub_00025E10_gen); }
+extern void sub_00026830_gen(void);
+void sub_00026830(void) { fov_call(sub_00026830_gen); }
+extern void sub_00027090_gen(void);
+void sub_00027090(void) { fov_call(sub_00027090_gen); }
+extern void sub_000274D0_gen(void);
+void sub_000274D0(void) { fov_call(sub_000274D0_gen); }
+
 void sub_00011100(void)
 {
     static int enabled = -1;
@@ -73,7 +111,7 @@ void sub_00011100(void)
     float aspect = MEMF(ASPECT_DEN) != 0 ? MEMF(ASPECT_NUM) / MEMF(ASPECT_DEN) : 0;
     const Shot *s = enabled && aspect > 1.5f && hpcos_Widescreen() ? current_shot() : NULL;
     if (!s) {
-        sub_00011100_gen();
+        fov_call(sub_00011100_gen);
         return;
     }
     /* the 4:3 width: tan(half fov') * aspect = tan(half fov) * 4/3 */
@@ -96,3 +134,32 @@ void hpcos_ShotLog(void)
             MEMF(HALF_FOV), MEMF(CAMERA_EYE), MEMF(CAMERA_EYE + 4), MEMF(CAMERA_EYE + 8),
             MEMF(ASPECT_DEN) != 0 ? MEMF(ASPECT_NUM) / MEMF(ASPECT_DEN) : 0.0f, current_shot() ? " (a zoomed shot)" : "");
 }
+
+/* the renderer's cutscene test (d3d12.cpp: depth of field in cutscenes). This title has none yet, so the answer is
+ * no and the effect stays off; its setting is not offered in F10 */
+int hpcos_Cutscene(void) { return 0; }
+
+/* debug: who opens a level's pieces. The kernel's path hook (xboxrecomp kernel_path.c) is set here; for a .geo file the
+ * title's return addresses on the guest stack are logged, call sites only, to find the code that streams a level's
+ * parts in as Harry moves (landing1.geo, landing2.geo on the staircases); the name is handed to hle_trainer.c, which
+ * ends the flying lesson's arch with its last cutscene */
+#include <string.h>
+extern void (*g_xbox_path_hook)(const char *xbox_path);
+static void geo_path_hook(const char *path)
+{
+    const char *e = strrchr(path, '.');
+    if (!e || _stricmp(e, ".geo")) return;
+    char line[512];
+    int n = snprintf(line, sizeof line, "[GEO] open %s from", strrchr(path, '\\') ? strrchr(path, '\\') + 1 : path);
+    int k = 0;
+    for (uint32_t i = 0; i < 1024 && k < 16 && n < (int)sizeof line - 12; i++) {
+        uint32_t v = MEM32(g_esp + 4 * i);
+        if (v < 0x11005 || v >= 0x130620) continue;
+        if (MEM8(v - 5) == 0xE8 || MEM8(v - 2) == 0xFF || MEM8(v - 3) == 0xFF || MEM8(v - 6) == 0xFF)
+            n += snprintf(line + n, sizeof line - n, " %08X", v), k++;
+    }
+    fprintf(stderr, "%s\n", line);
+    extern void hpcos_GeoOpened(const char *name);
+    hpcos_GeoOpened(strrchr(path, '\\') ? strrchr(path, '\\') + 1 : path);
+}
+__attribute__((constructor)) static void geo_path_hook_init(void) { g_xbox_path_hook = geo_path_hook; }
