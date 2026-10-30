@@ -35,10 +35,10 @@ def main(game, out):
         if key in seen:
             continue
         seen.add(key)
-        rows.append((lv, r["handler"], f"0x{item:04X}", r["x"], r["y"], r["z"]))
+        rows.append((lv, r["handler"], f"0x{item:04X}", r["x"], r["y"], r["z"], "geo"))
     with open(out, "w", newline="") as f:
         w = csv.writer(f, delimiter="\t", lineterminator="\n")
-        w.writerow(["level", "handler", "item_id", "x", "y", "z"])
+        w.writerow(["level", "handler", "item_id", "x", "y", "z", "source"])
         w.writerows(sorted(rows))
     print(f"{out}: {len(rows)} pickups; levels left out: {', '.join(sorted(skipped))}")
 

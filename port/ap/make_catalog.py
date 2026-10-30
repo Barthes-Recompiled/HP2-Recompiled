@@ -89,8 +89,13 @@ def _read_census(path, kinds=None):
                 raise ValueError(f"{path}:{line}: duplicate rounded identity {key}; inspect census")
             seen.add(key)
             place = LEVELS[level]
+            # "geo": a placed object read from the level files (cos_pickups.py); "played": a grant the file census
+            # can't see (beans from breakables and timed spots), found in a RECOMP_AP_RECORD log and merged in by
+            # merge_grants.py: its own group, so the apworld can leave them out
+            source = (row.get("source") or "geo").strip()
+            group = "Loose Pickups" if source == "played" else "Pickups"
             locs.append(dict(key=key, name=f"{place}: {item_kind(item, kinds)} at ({rx}, {rz})",
-                             region=place, group="Pickups", level=level, item=item,
+                             region=place, group=group, level=level, item=item,
                              handler=handler, x=x, y=y, z=z))
     return locs
 
