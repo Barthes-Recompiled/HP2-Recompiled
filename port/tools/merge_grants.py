@@ -41,6 +41,10 @@ def main(pickups, grants):
     added = 0
     for path in grants:
         for g in read(path):
+            # the recorder's find column: 0 is a bean Harry spilled when hit and picked back up (the count only
+            # recovered), not a pickup of the world's; logs without the column are from before it and count
+            if g.get("find", "1").strip() == "0":
+                continue
             if near(rows, g):
                 continue
             handler = g["handler"].lower()

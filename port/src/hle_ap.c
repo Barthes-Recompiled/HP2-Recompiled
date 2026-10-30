@@ -67,10 +67,13 @@ static int g_ap_giving;
  * regen.sh --exclude-manual keeps its body as sub_00081A10_gen. */
 /* RECOMP_AP_RECORD=<file>: every grant that succeeded, appended as a census row (level, the caller's return address in
  * place of a handler, item, Harry's x y z): a play-through records the pickups the entity census can't see (chests,
- * vases and placed beans are level objects, not entities), for make_catalog.py --census */
+ * vases and placed beans are level objects, not entities), for make_catalog.py --census. find is 1 for a real
+ * find: a bean grant that took the count past its peak so far this run; Harry spills beans when hit and picking
+ * them back up is a grant too (2026-10-30: 19 such in the Entrance Hall), which only restores the count, so 0.
+ * merge_grants.py keeps the 1s */
 static void record(uint32_t item, uint32_t from, const float p[3])
 {
-    static int on = -1;
+    static int on = -1, peak;
     static char path[MAX_PATH];
     if (on < 0) {
         const char *e = getenv("RECOMP_AP_RECORD");
@@ -78,12 +81,17 @@ static void record(uint32_t item, uint32_t from, const float p[3])
         if (on) snprintf(path, sizeof path, "%s", e);
     }
     if (!on) return;
+    int find = 1, beans = (int16_t)MEM16(kBeans);
+    if ((item >> 12) == 3) {  /* the pickup kinds: beans among them (the count is what moved) */
+        find = beans > peak;
+    }
+    if (beans > peak) peak = beans;
     FILE *f = fopen(path, "a");
     if (!f) return;
     fseek(f, 0, SEEK_END);
-    if (ftell(f) == 0) fprintf(f, "level\thandler\titem_id\tx\ty\tz\n");
-    fprintf(f, "%u\t%x\t%x\t%.2f\t%.2f\t%.2f\n", (unsigned)MEM32(kProgress), (unsigned)from, (unsigned)item, p[0], p[1],
-            p[2]);
+    if (ftell(f) == 0) fprintf(f, "level\thandler\titem_id\tx\ty\tz\tfind\n");
+    fprintf(f, "%u\t%x\t%x\t%.2f\t%.2f\t%.2f\t%d\n", (unsigned)MEM32(kProgress), (unsigned)from, (unsigned)item, p[0],
+            p[1], p[2], find);
     fclose(f);
 }
 
