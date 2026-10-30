@@ -64,19 +64,43 @@ static int g_ap_giving;
 /* Generated body's return/stack/register behavior stays untouched. Capture the
  * item before it pops the return address; all reporting is native host code.
  * regen.sh --exclude-manual keeps its body as sub_00081A10_gen. */
+/* RECOMP_AP_RECORD=<file>: every grant that succeeded, appended as a census row (level, the caller's return address in
+ * place of a handler, item, Harry's x y z): a play-through records the pickups the entity census can't see (chests,
+ * vases and placed beans are level objects, not entities), for make_catalog.py --census */
+static void record(uint32_t item, uint32_t from, const float p[3])
+{
+    static int on = -1;
+    static char path[MAX_PATH];
+    if (on < 0) {
+        const char *e = getenv("RECOMP_AP_RECORD");
+        on = e && *e;
+        if (on) snprintf(path, sizeof path, "%s", e);
+    }
+    if (!on) return;
+    FILE *f = fopen(path, "a");
+    if (!f) return;
+    fseek(f, 0, SEEK_END);
+    if (ftell(f) == 0) fprintf(f, "level\thandler\titem_id\tx\ty\tz\n");
+    fprintf(f, "%u\t%x\t%x\t%.2f\t%.2f\t%.2f\n", (unsigned)MEM32(kProgress), (unsigned)from, (unsigned)item, p[0], p[1],
+            p[2]);
+    fclose(f);
+}
+
 void sub_00081A10(void)
 {
-    uint32_t item = MEM32(g_esp + 4);
+    uint32_t item = MEM32(g_esp + 4), from = MEM32(g_esp);
     sub_00081A10_gen();
-    if (!(g_eax & 0xFF) || g_ap_giving || !hpcos_ap_enabled()) return;
-    const char *key = NULL;
+    if (!(g_eax & 0xFF) || g_ap_giving) return;
+    float p[3] = {0, 0, 0};
     uint32_t player = MEM32(0x530408);
     if (player >= 0x80000000u && player <= 0x84000000u - 0xB0) {
         uint32_t obj = MEM32(player + 0xAC);
         if (obj >= 0x80000000u && obj <= 0x84000000u - 0x20)
-            key = hpcos_ap_pickup((int)MEM32(kProgress), item,
-                                 MEMF(obj + 0x14), MEMF(obj + 0x18), MEMF(obj + 0x1C));
+            p[0] = MEMF(obj + 0x14), p[1] = MEMF(obj + 0x18), p[2] = MEMF(obj + 0x1C);
     }
+    record(item, from, p);
+    if (!hpcos_ap_enabled()) return;
+    const char *key = p[0] || p[1] || p[2] ? hpcos_ap_pickup((int)MEM32(kProgress), item, p[0], p[1], p[2]) : NULL;
     if (key) hpcos_ap_location(key);
     else {
         char reward[32];
