@@ -41,6 +41,7 @@ extern void sub_00081A10_gen(void);
 extern void sub_00081860(void);
 extern void sub_000818C0(void);
 extern void sub_0004AD50(void);
+extern void sub_000A9B80(void);
 extern uint32_t hpcos_CallGuest(void (*fn)(void), int n, const uint32_t *args);  /* hle_trainer.c */
 
 enum {
@@ -222,11 +223,12 @@ static void skip_intro(void)
      * sub_000A9B80, and spell bit 26 in 0x527F0C, which a level's load re-derives from the record:
      * sub_0004D850 -> sub_0004B1C0 -> sub_000A9C00). Without it a charged Flipendo winds up and never releases,
      * so the bean barrels can't be broken (seen live 2026-10-30; entering the Entrance Hall set it). The title's
-     * own give-item does both; the hook leaves the bridge's gives out */
-    g_ap_giving++;
+     * give-item (sub_00081A10, 0x7xxx path at 0x8258B) does the same two writes and then opens the item page
+     * (sub_0004DCE0), which before any level has loaded reads nothing and ends on the dirty-disc screen
+     * (seen live 2026-10-30), so only the two writes here */
+    MEM32(kSpells) |= 1u << 26;
     uint32_t lesson[1] = {kChargedFlipendo};
-    hpcos_CallGuest(sub_00081A10, 1, lesson);
-    g_ap_giving--;
+    hpcos_CallGuest(sub_000A9B80, 1, lesson);
     uint32_t a[1] = {kSkipToLevel};
     hpcos_CallGuest(sub_0004AD50, 1, a);
     MEM16(kLevelStart) = 0;
