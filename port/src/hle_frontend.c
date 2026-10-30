@@ -85,7 +85,12 @@ static int g_pause_ask;     /* ... and its "Are you sure?" box is up */
 static int g_pause_draw;    /* the pause menu is drawing */
 
 /* the settings pages: which is up and where (0 none, 1 over the title, 2 in the pause menu) */
-enum { kPageSettings, kPageGameplay, kPageGraphics, kPageControls, kPageButtons };
+enum { kPageSettings, kPageGameplay, kPageGraphics, kPageControls, kPageButtons, kPageTravel };
+
+/* the Archipelago travel page (hle_ap.c), in a build with the bridge: a Settings row while a slot is bound */
+int __attribute__((weak)) hpcos_ApTravelCount(void) { return 0; }
+const char *__attribute__((weak)) hpcos_ApTravelRow(int i, int *unlocked) { (void)i; *unlocked = 0; return ""; }
+int __attribute__((weak)) hpcos_ApTravelGo(int i) { (void)i; return 0; }
 /* the Button Mapping page's mode: its rows, waiting for a pad button (input.cpp), or asking whether to swap */
 enum { kMapRows, kMapWait, kMapAsk };
 static struct {
@@ -306,6 +311,18 @@ static int page_rows(int page, PageRow *rows, int max)
             snprintf(rows[n].text, sizeof rows[n].text, "%s", kSub[n]);
             rows[n].enabled = 1;
         }
+        if (hpcos_ApTravelCount() > 0) {
+            snprintf(rows[n].text, sizeof rows[n].text, "Hogwarts Travel");
+            rows[n].enabled = 1, n++;
+        }
+    } else if (page == kPageTravel) {
+        /* every place the slot can hold a pass for, the ones without it shown but not chosen */
+        for (int i = 0; n < max && i < hpcos_ApTravelCount(); i++, n++) {
+            int open;
+            const char *name = hpcos_ApTravelRow(i, &open);
+            snprintf(rows[n].text, sizeof rows[n].text, open ? "%s" : "%s   locked", name);
+            rows[n].enabled = open;
+        }
     } else if (page == kPageButtons && g_pg.map_mode == kMapAsk) {
         /* the pad button got already plays another game button: swap the two, or leave both */
         snprintf(rows[0].text, sizeof rows[0].text, "%s is used by %s", app_PadInputLabel(g_pg.map_button),
@@ -349,6 +366,7 @@ static const char *page_title(int page)
     case kPageGameplay: return "Gameplay";
     case kPageGraphics: return "Graphics";
     case kPageButtons: return "Button Mapping";
+    case kPageTravel: return "Hogwarts Travel";
     default: return "Controls";
     }
 }
@@ -379,7 +397,7 @@ static void page_back(void)
     if (g_pg.page != kPageSettings) {
         int from = g_pg.page;
         page_open_at(kPageSettings, g_pg.where);
-        g_pg.sel = from - kPageGameplay;
+        g_pg.sel = from == kPageTravel ? 3 : from - kPageGameplay;
         return;
     }
     g_pg.where = 0;
@@ -457,7 +475,13 @@ static void page_input(uint32_t p)
     if (g_pg.page == kPageSettings) {
         if (!a) return;
         sound(kSndConfirm);
-        page_open_at(kPageGameplay + g_pg.sel, g_pg.where);
+        page_open_at(g_pg.sel == 3 ? kPageTravel : kPageGameplay + g_pg.sel, g_pg.where);
+        return;
+    }
+    if (g_pg.page == kPageTravel) {
+        if (!a) return;
+        sound(kSndConfirm);
+        if (hpcos_ApTravelGo(g_pg.sel)) g_pg.where = 0;  /* the pages close; the level load takes the pause menu */
         return;
     }
     if (g_pg.page == kPageControls && g_pg.sel == 0) {
@@ -531,7 +555,7 @@ static void page_draw(void)
     uint32_t box[4] = {PAGE_X0, PAGE_Y0, PAGE_X1, PAGE_Y1};
     call_guest(sub_0004E490, 0, 4, box);
     font_setup(name_font, 1.0f);
-    static uint32_t name_va[5];
+    static uint32_t name_va[kPageTravel + 1];
     draw_text(name_font, kYellow, PAGE_NAME_Y, guest_text(page_title(g_pg.page), &name_va[g_pg.page]));
     font_setup(font, 0.85f);
     int shown = n < PAGE_ROWS_SHOWN ? n : PAGE_ROWS_SHOWN;

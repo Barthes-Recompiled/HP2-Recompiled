@@ -219,6 +219,17 @@ if(WIN32)
         "${CMAKE_CURRENT_SOURCE_DIR}/src/renderer;${XBOXRECOMP_DIR}/src;${IMGUI_DIR}"
         COMPILE_OPTIONS "-msse4.1")
     set_target_properties(${PROJECT_NAME} PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON)
+    # Archipelago (src/ap, src/hle_ap.c): the in-exe client on WinHTTP WebSockets, nlohmann/json 3.11.3
+    # (third_party/nlohmann, MIT), port/ap/catalog.json built in as catalog_data.inc
+    set(AP_CATALOG ${CMAKE_CURRENT_SOURCE_DIR}/ap/catalog.json)
+    set(AP_CATALOG_INC ${CMAKE_CURRENT_BINARY_DIR}/ap_gen/catalog_data.inc)
+    add_custom_command(OUTPUT ${AP_CATALOG_INC}
+        COMMAND ${CMAKE_COMMAND} -DIN=${AP_CATALOG} -DOUT=${AP_CATALOG_INC} -P ${CMAKE_CURRENT_SOURCE_DIR}/ap/embed.cmake
+        DEPENDS ${AP_CATALOG} ${CMAKE_CURRENT_SOURCE_DIR}/ap/embed.cmake)
+    target_sources(${PROJECT_NAME} PRIVATE src/hle_ap.c src/ap/bridge.cpp src/ap/client.cpp ${AP_CATALOG_INC})
+    set_source_files_properties(src/ap/bridge.cpp src/ap/client.cpp PROPERTIES INCLUDE_DIRECTORIES
+        "${CMAKE_CURRENT_SOURCE_DIR}/third_party;${CMAKE_CURRENT_SOURCE_DIR}/src/ap;${CMAKE_CURRENT_BINARY_DIR}/ap_gen")
+    target_link_libraries(${PROJECT_NAME} PRIVATE winhttp)
 endif()
 
 if(WIN32)

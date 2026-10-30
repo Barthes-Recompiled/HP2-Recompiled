@@ -86,6 +86,7 @@ extern void sub_00021BC0(void);
 extern void hpcos_StackDumpTo(const char *path);
 extern void hpcos_RequestCapture(void);
 extern void hpcos_WideAspectTick(void); /* hle_video.c: 16:9 put back after a 4:3 screen */
+void __attribute__((weak)) hpcos_ApFrame(void) {}  /* hle_ap.c: the Archipelago bridge, in a build with it */
 extern ptrdiff_t g_xbox_mem_offset;
 
 /* hle_input.c: the pad as the game last read it */
@@ -175,6 +176,8 @@ static uint32_t call_guest(void (*fn)(void), int n, const uint32_t *args)
     g_esp = s_esp, g_ebx = s_ebx, g_esi = s_esi, g_edi = s_edi, g_ebp = s_ebp;
     return g_eax;
 }
+
+uint32_t hpcos_CallGuest(void (*fn)(void), int n, const uint32_t *args) { return call_guest(fn, n, args); }
 
 /* the same for a function returning in st(0) */
 static double call_guest_fp(void (*fn)(void), int n, const uint32_t *args)
@@ -1034,6 +1037,7 @@ void sub_00053710(void)
     HpcosTrainerShm *t = shm();
     uint32_t ent = ARG(0);
     give_card_key(ent);
+    if (ent && ent == MEM32(kPlayer)) hpcos_ApFrame();
     if (ent && ent == MEM32(kPlayer)) hpcos_WideAspectTick(), harry_diff(ent), trig_trace(ent), grounds_borders(), lesson_arch(), lake_edge();
     if (!t || !ent || ent != MEM32(kPlayer)) {
         sub_00053710_gen();
