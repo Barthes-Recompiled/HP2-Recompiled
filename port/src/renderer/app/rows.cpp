@@ -21,7 +21,7 @@ namespace {
 enum Id {
     kDisplayMode, kResolution, kAspect, kVsync, kFov, kInternal, kRenderScale, kMaxHeight, kMsaa, kSmaa, kAniso,
     kBrightness, kContrast, kFpsCounter, kDrawAll, kBloom, kBloomStrength, kSharpen, kSaturation, kVibrance, kWarmth,
-    kVignette, kGrain, kSpeakers, kKbm, kMouseSensitivity, kMouseInvertY, kMoveMode, kController, kDeadzoneLeft,
+    kVignette, kGrain, kSpeakers, kKbm, kMouseSensitivity, kMouseInvertY, kMoveMode, kController, kBackgroundPad, kDeadzoneLeft,
     kSensitivityLeft, kDeadzoneRight, kCameraSpeed, kInvertX, kInvertY, kVibration, kVibrationStrength, kCutsceneSkip,
     kIntroSkip, kColorBlind, kColorBlindStrength, kExploreGrounds, kBroomLandFlat, kDebugKeys, kAudioTrace, kIds
 };
@@ -97,6 +97,7 @@ const Def kDefs[kIds] = {
     /* kMouseInvertY */ Flag(&S::mouse_invert_y),
     /* kMoveMode */ List(&S::move_mode, kMove_, kMoveModeNames),
     /* kController */ Flag(&S::controller),
+    /* kBackgroundPad */ Flag(&S::background_pad),
     /* kDeadzoneLeft */ Range(&S::deadzone_left, 0, 50, 5, "%"),
     /* kSensitivityLeft */ Range(&S::sensitivity_left, 25, 200, 25, "%"),
     /* kDeadzoneRight */ Range(&S::deadzone_right, 0, 50, 5, "%"),
@@ -158,6 +159,7 @@ const Row kAudioRows[] = {
 const Row kControlsRows[] = {
     Head("Controller"),
     Val(kController, "Use controller", true),
+    Val(kBackgroundPad, "Controller in background", true),
     Val(kVibration, "Vibration", true),
     Val(kVibrationStrength, "Vibration strength", true),
     Val(kInvertX, "Invert camera X", true),
@@ -411,6 +413,9 @@ const char* Note(const Row& row) {
                    "(or a 5.1 HDMI receiver).";
         case kController:
             return s.controller ? nullptr : "The game ignores the controller; keyboard and mouse still play.";
+        case kBackgroundPad:
+            return s.background_pad ? "The controller still plays while another window has the focus."
+                                    : "The controller is ignored while another window has the focus.";
         case kMoveMode: return "Mouse wheel in game:  down  Slow walk  <  Walk  <  Run  up";
         case kCutsceneSkip:
             return "Hold Start or Back: runs it to its own end, muted and with the picture held, so nothing it sets\n"
