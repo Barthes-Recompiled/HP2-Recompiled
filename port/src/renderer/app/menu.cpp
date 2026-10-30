@@ -294,6 +294,9 @@ static void ResetPage(Settings& s, const char* page) {
         std::memcpy(&s.vibration, &d.vibration, sizeof(s.vibration));
         std::memcpy(&s.vibration_strength, &d.vibration_strength, sizeof(s.vibration_strength));
     }
+    if (!std::strcmp(page, "Gameplay")) {
+        std::memcpy(&s.broom_free_flight, &d.broom_free_flight, sizeof(s.broom_free_flight));
+    }
     if (!std::strcmp(page, "Accessibility")) {
         std::memcpy(&s.colorblind, &d.colorblind, sizeof(s.colorblind));
         std::memcpy(&s.colorblind_strength, &d.colorblind_strength, sizeof(s.colorblind_strength));
@@ -426,6 +429,13 @@ void DrawPanel(bool start) {
     if (tabs && ImGui::BeginTabItem("Controls")) {
         page = "Controls";
         DrawControls(s);
+        ImGui::EndTabItem();
+    }
+    if (tabs && ImGui::BeginTabItem("Gameplay")) {
+        page = "Gameplay";
+        Row("Broom");
+        if (ImGui::Checkbox("Land the broom anywhere on the grounds", &s.broom_free_flight)) Changed();
+        ImGui::TextDisabled("Gets off the broom over any ground, as on the PS2; off, only on the landing pads (the Xbox).");
         ImGui::EndTabItem();
     }
     if (tabs && ImGui::BeginTabItem("Accessibility")) {
