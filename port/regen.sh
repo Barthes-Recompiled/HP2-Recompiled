@@ -28,6 +28,7 @@ python3 -m tools.func_id "$xbe"
 python3 -m tools.abi_analysis "$xbe"
 python3 -m tools.recomp "$xbe" --all --split 1000 --gen-dir "$port/src/recomp/gen" --game-name hpcos \
     --exclude-manual "$(src src/hle_broom.c)" \
+    --exclude-manual "$(src src/hle_skip.c)" \
     --exclude-manual "$(src src/hle_crc.c)" \
     --exclude-manual "$(src src/hle_debug.c)" \
     --exclude-manual "$(src src/hle_dsound.c)" \

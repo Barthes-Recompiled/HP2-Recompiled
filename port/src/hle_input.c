@@ -50,6 +50,7 @@ static int trace_on(void)
 #include "input/xinput_xbox.h"
 
 void hpcos_TrainerInject(XBOX_GAMEPAD *g);  /* hle_trainer.c: input a tool asks for, added to port 0 */
+void hpcos_SkipPad(const XBOX_GAMEPAD *g);  /* hle_skip.c: holding Start/Back fast-forwards a cutscene */
 
 extern int app_KbmOn(void);  /* renderer/app/input.cpp: keyboard and mouse play as controller 1 */
 extern int app_InputPad(int port, XBOX_GAMEPAD *g);  /* renderer/app/input.cpp: the controls settings; 1 | 2 the sticks
@@ -408,7 +409,10 @@ static void get_state_direct(void)
         if (!(kbm & 1)) stick_compensate(&s.Gamepad.sThumbLX, &s.Gamepad.sThumbLY);
         else if (g_h[h].port == 0) move_slow_walk();
         stick_compensate(&s.Gamepad.sThumbRX, &s.Gamepad.sThumbRY);
-        if (g_h[h].port == 0) hpcos_TrainerInject(&s.Gamepad);
+        if (g_h[h].port == 0) {
+            hpcos_TrainerInject(&s.Gamepad);
+            hpcos_SkipPad(&s.Gamepad);
+        }
         /* Alohomora: the L trigger (aim) pressed during its cast moved the spell's light up and to the side
          * (2026-10-25). While Harry's animation record ([0x530354]) is Alohomora's cast (0x1ECEBC), the game sees the
          * trigger released, unless it was already held when the cast began (aimed first, then cast).

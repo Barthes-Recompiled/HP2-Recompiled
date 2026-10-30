@@ -50,6 +50,8 @@ struct Settings {
     bool vibration = true, invert_x = false, invert_y = false;
     bool controller = true;  // the in-game F10 option of the same name
     bool broom = false;      // broom_free_flight
+    bool cutscene_skip = true;  // cutscene_skip
+    bool intro_skip = true;     // intro_skip
 };
 
 const char* const kColorBlindKeys[] = {"off", "protanopia", "deuteranopia", "tritanopia"};
@@ -144,6 +146,8 @@ Settings Load() {
     s.vibration = Value("vibration") != "false";
     s.controller = Value("controller") != "false";
     s.broom = Value("broom_free_flight") == "true";
+    s.cutscene_skip = Value("cutscene_skip") != "false";
+    s.intro_skip = Value("intro_skip") != "false";
     s.invert_x = Value("invert_camera_x") == "true";
     s.invert_y = Value("invert_camera_y") == "true";
     return s;
@@ -170,6 +174,8 @@ void Save(const Settings& s) {
     SetValue("vibration", s.vibration ? "true" : "false");
     SetValue("controller", s.controller ? "true" : "false");
     SetValue("broom_free_flight", s.broom ? "true" : "false");
+    SetValue("cutscene_skip", s.cutscene_skip ? "true" : "false");
+    SetValue("intro_skip", s.intro_skip ? "true" : "false");
     SetValue("invert_camera_x", s.invert_x ? "true" : "false");
     SetValue("invert_camera_y", s.invert_y ? "true" : "false");
     std::ofstream f(TomlPath(), std::ios::trunc);
@@ -492,6 +498,8 @@ bool DrawPage(Settings& s, std::string& error) {
     ImGui::Checkbox("Invert camera Y", &s.invert_y);
     ImGui::TextDisabled("Key bindings, button remapping and stick settings: F10 > Controls in the game.");
     ImGui::Checkbox("Land the broom anywhere on the Hogwarts grounds (as on the PS2)", &s.broom);
+    ImGui::Checkbox("Hold Start or Back to fast-forward cutscenes", &s.cutscene_skip);
+    ImGui::Checkbox("Skip the start-up logos", &s.intro_skip);
     ImGui::PopItemWidth();
 
     ImGui::Spacing();

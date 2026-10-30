@@ -77,6 +77,10 @@ const Entry kEntries[] = {
      "renderer debug keys: F7 depth test always passes, F8 log depth for all draws, F9 alpha test off"},
     {"draw_all_objects", "RECOMP_DRAW_ALL", Kind::Bool, FIELD(draw_all), 0, 0,
      "draw every object in the camera's view, also those a room seen through a doorway or arch would leave out (parts of the library); false as the Xbox"},
+    {"intro_skip", "RECOMP_INTRO_SKIP", Kind::Bool, FIELD(intro_skip), 0, 0,
+     "the EA and Warner Bros. logo movies at start-up are left out; false as the Xbox"},
+    {"cutscene_skip", "RECOMP_CUTSCENE_SKIP", Kind::Bool, FIELD(cutscene_skip), 0, 0,
+     "holding Start or Back for half a second fast-forwards a cutscene to its own end (muted, the picture held); false as the Xbox"},
     {"broom_free_flight", "RECOMP_BROOM_FREE_FLIGHT", Kind::Bool, FIELD(broom_free_flight), 0, 0,
      "on the Hogwarts grounds the broom lands anywhere over the ground, not only on the landing pads (as on the PS2); false as the Xbox"},
     {"speakers", "RECOMP_SPEAKERS", Kind::U32, FIELD(speakers), 2, 6,
@@ -466,6 +470,8 @@ extern "C" int app_Speakers(void) { return app::Get().speakers == 6 ? 6 : 2; }
 // pushbuffer path) as the RECOMP_* variables it reads, before any thread starts
 extern "C" int app_DrawAll(void) { return app::Get().draw_all; }
 extern "C" int app_BroomFreeFlight(void) { return app::Get().broom_free_flight; }
+extern "C" int app_CutsceneSkip(void) { return app::Get().cutscene_skip; }
+extern "C" int app_IntroSkip(void) { return app::Get().intro_skip; }
 
 extern "C" void hpcos_SettingsInit(void) {
     const app::Settings& s = app::Get();
