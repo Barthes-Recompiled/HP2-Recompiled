@@ -594,7 +594,7 @@ extern "C" volatile double hpcos_last_frame_ms = 0;
 // xboxrecomp debug: when the last Swap happened (QueryPerformanceCounter), for main.c's [STALL] watcher
 extern "C" volatile int64_t hpcos_last_swap_qpc = 0;
 extern "C" void hpcos_RenderStats(double out[8], uint64_t* draws);  // gpu/render_thread.cpp
-extern "C" void hpcos_GpuStats(double out[4], uint32_t frames);     // gpu/d3d12.cpp
+extern "C" void hpcos_GpuStats(double out[6], uint32_t frames);     // gpu/d3d12.cpp
 
 // xboxrecomp debug: RECOMP_PERF=1 logs where the frames' time went every 2 s ([PERF]): frames and fps, the slowest,
 // then per frame on average: the game thread's own work (the frame less its pacing sleep and its waits on the render
@@ -617,7 +617,7 @@ static void PerfFrame(double frame_ms, double pace_ms) {
     if (frame_ms > worst) worst = frame_ms;
     double span = double(now.QuadPart - t0.QuadPart) / double(freq.QuadPart);
     if (span < 2.0) return;
-    double r[8], g[4];
+    double r[8], g[6];
     uint64_t draws;
     hpcos_RenderStats(r, &draws);
     hpcos_GpuStats(g, frames);
@@ -625,10 +625,10 @@ static void PerfFrame(double frame_ms, double pace_ms) {
     std::fprintf(stderr, "[PERF] %u frames %.1f fps, slowest %.1f ms | per frame ms: game work %.2f, waits on render "
                  "thread %.2f (frame %.2f read-back %.2f other %.2f), pace sleep %.2f | render thread exec %.2f, "
                  "present %.2f | %.0f draws | GPU ms: drawing %.2f, shown frame passes %.2f | target copies %.1f "
-                 "(%.0f Msamples)\n",
+                 "(%.0f Msamples) | uploads %.1f MB, ring waits %.2f\n",
                  frames, n / span, worst, (sum_frame - sum_pace - waits) / n, waits / n, r[5] / n, r[0] / n,
                  (r[1] + r[2] + r[3] + r[4]) / n, sum_pace / n, r[6] / n, r[7] / n, double(draws) / n, g[0], g[1],
-                 g[2], g[3]);
+                 g[2], g[3], g[4], g[5]);
     sum_frame = sum_pace = worst = 0;
     frames = 0;
     t0 = now;

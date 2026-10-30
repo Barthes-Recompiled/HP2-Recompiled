@@ -318,9 +318,21 @@ void sub_000AE1F0(void)
  * frustum's sides again as sub_000348C0 makes them, from its top angle: left / right = -/+ atan(tan(top) * aspect) */
 extern int hpcos_Widescreen(void); /* renderer/xdk/hle_d3d8.cpp: booted in 16:9 */
 
+/* Harry's update ran in the last 150 ms: the game itself is up, not the inventory or a wizard card's screen (his
+ * update stops while one is up); the field of view slider holds only then (hle_shots.c) */
+static volatile DWORD g_harry_ms;
+int hpcos_InGameView(void)
+{
+    if (GetTickCount() - g_harry_ms > 150) return 0;
+    if (!hpcos_Widescreen()) return 1;
+    float num = MEMF(0x0050C2B8), den = MEMF(0x0050C2BC), r = den != 0.0f ? num / den : 0.0f;
+    return !(r > 4.0f / 3.0f - 0.01f && r < 4.0f / 3.0f + 0.01f);  /* a 4:3 screen in 16:9: the inventory */
+}
+
 void hpcos_WideAspectTick(void)
 {
     static DWORD since, last;
+    g_harry_ms = GetTickCount();
     if (!hpcos_Widescreen()) return;
     float num = MEMF(0x0050C2B8), den = MEMF(0x0050C2BC), r = den != 0.0f ? num / den : 0.0f;
     DWORD now = GetTickCount();

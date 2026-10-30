@@ -28,6 +28,7 @@
 
 extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND, UINT, WPARAM, LPARAM);
 extern "C" void hpcos_ShotLog(void);  // hle_shots.c: the camera's level, lens and eye, for kShots
+extern "C" void hpcos_MarkObjects(void);  // hle_trainer.c: the entities and level objects near Harry ([NEAR])
 extern "C" void xbox_FramebufferWindowSetMsgHook(int (*fn)(void*, unsigned, uintptr_t, intptr_t));
 
 namespace app {
@@ -231,6 +232,7 @@ void DrawDebug(Settings& s) {
         LOGI("[MARK] %d at %02u:%02u:%02u.%03u (marked from F10's Debug tab)", ++marks, t.wHour, t.wMinute, t.wSecond,
              t.wMilliseconds);
         hpcos_ShotLog();
+        hpcos_MarkObjects();
     }
     if (marks) ImGui::TextDisabled("%d mark%s written: search the log for [MARK]", marks, marks == 1 ? "" : "s");
     ImGui::TextDisabled("Mark right after something goes wrong, then give the mark's number with your report.");
@@ -265,6 +267,15 @@ static void ResetPage(Settings& s, const char* page) {
         std::memcpy(&s.display_mode, &d.display_mode, sizeof(s.display_mode));
         std::memcpy(&s.draw_all, &d.draw_all, sizeof(s.draw_all));
         std::memcpy(&s.fps_counter, &d.fps_counter, sizeof(s.fps_counter));
+        std::memcpy(&s.bloom, &d.bloom, sizeof(s.bloom));
+        std::memcpy(&s.bloom_strength, &d.bloom_strength, sizeof(s.bloom_strength));
+        std::memcpy(&s.sharpen, &d.sharpen, sizeof(s.sharpen));
+        std::memcpy(&s.saturation, &d.saturation, sizeof(s.saturation));
+        std::memcpy(&s.vibrance, &d.vibrance, sizeof(s.vibrance));
+        std::memcpy(&s.warmth, &d.warmth, sizeof(s.warmth));
+        std::memcpy(&s.vignette, &d.vignette, sizeof(s.vignette));
+        std::memcpy(&s.grain, &d.grain, sizeof(s.grain));
+        std::memcpy(&s.fov, &d.fov, sizeof(s.fov));
         std::memcpy(&s.height, &d.height, sizeof(s.height));
         std::memcpy(&s.internal_height, &d.internal_height, sizeof(s.internal_height));
         std::memcpy(&s.msaa, &d.msaa, sizeof(s.msaa));
@@ -301,6 +312,10 @@ static void ResetPage(Settings& s, const char* page) {
     if (!std::strcmp(page, "Debug")) {
         std::memcpy(&s.audio_trace, &d.audio_trace, sizeof(s.audio_trace));
         std::memcpy(&s.debug_keys, &d.debug_keys, sizeof(s.debug_keys));
+    }
+    if (!std::strcmp(page, "Enhancements")) {
+        std::memcpy(&s.grounds_warps, &d.grounds_warps, sizeof(s.grounds_warps));
+        std::memcpy(&s.broom_land_flat, &d.broom_land_flat, sizeof(s.broom_land_flat));
     }
 }
 
@@ -407,6 +422,35 @@ void DrawPanel(bool start) {
     if (ImGui::Checkbox("FPS counter", &s.fps_counter)) Changed();
     if (ImGui::Checkbox("Draw everything in view (no doorway culling)", &s.draw_all)) Changed();
 
+    // xboxrecomp: post-processing, off or neutral by default
+    Row("Post-processing");
+    if (ImGui::Checkbox("Bloom", &s.bloom)) Changed();
+    ImGui::SameLine();
+    ImGui::TextDisabled("a glow round bright lights, not the HUD");
+    if (!s.bloom) ImGui::BeginDisabled();
+    int bs = int(s.bloom_strength);
+    if (ImGui::SliderInt("Bloom strength", &bs, 0, 100)) s.bloom_strength = uint32_t(bs);
+    if (ImGui::IsItemDeactivatedAfterEdit()) Changed();
+    if (!s.bloom) ImGui::EndDisabled();
+    int sh = int(s.sharpen), sa = int(s.saturation), vi = int(s.vibrance), wa = int(s.warmth);
+    if (ImGui::SliderInt("Sharpening", &sh, 0, 100, sh ? "%d" : "off")) s.sharpen = uint32_t(sh);
+    if (ImGui::IsItemDeactivatedAfterEdit()) Changed();
+    if (ImGui::SliderInt("Saturation", &sa, 0, 200, "%d %%")) s.saturation = uint32_t(sa);
+    if (ImGui::IsItemDeactivatedAfterEdit()) Changed();
+    if (ImGui::SliderInt("Vibrance", &vi, 0, 100, vi ? "%d" : "off")) s.vibrance = uint32_t(vi);
+    if (ImGui::IsItemDeactivatedAfterEdit()) Changed();
+    if (ImGui::SliderInt("Warmth", &wa, 0, 100, wa == 50 ? "as the game" : wa < 50 ? "cooler %d" : "warmer %d"))
+        s.warmth = uint32_t(wa);
+    if (ImGui::IsItemDeactivatedAfterEdit()) Changed();
+    int vg = int(s.vignette), gr = int(s.grain);
+    if (ImGui::SliderInt("Vignette", &vg, 0, 100, vg ? "%d" : "off")) s.vignette = uint32_t(vg);
+    if (ImGui::IsItemDeactivatedAfterEdit()) Changed();
+    if (ImGui::SliderInt("Film grain", &gr, 0, 100, gr ? "%d" : "off")) s.grain = uint32_t(gr);
+    if (ImGui::IsItemDeactivatedAfterEdit()) Changed();
+    int fv = int(std::clamp(s.fov, 80u, 130u));
+    if (ImGui::SliderInt("Field of view (experimental)", &fv, 80, 130, fv == 100 ? "as the game" : "%d %%")) s.fov = uint32_t(fv);
+    if (ImGui::IsItemDeactivatedAfterEdit()) Changed();
+
         ImGui::EndTabItem();
     }
     if (tabs && ImGui::BeginTabItem("Audio")) {
@@ -444,6 +488,19 @@ void DrawPanel(bool start) {
         if (ImGui::IsItemDeactivatedAfterEdit()) Changed();
         ImGui::EndDisabled();
         ImGui::TextDisabled("Shifts the colours a colour-blind player confuses toward ones they can tell apart.");
+        ImGui::EndTabItem();
+    }
+    if (tabs && ImGui::BeginTabItem("Enhancements")) {
+        // xboxrecomp: changes to how the game plays that go beyond the console's (moved from Debug, 2026-10-30)
+        page = "Enhancements";
+        Row("Hogwarts grounds");
+        bool explore = !s.grounds_warps;  // the setting is the game's path warps; exploring is them off
+        if (ImGui::Checkbox("Explore Hogwarts Grounds (experimental)", &explore)) s.grounds_warps = !explore, Changed();
+        ImGui::TextDisabled("On: walk the whole grounds, every area shown. Off: a path's end fades out to its other end, as the game does.");
+        ImGui::TextDisabled("While on, the story's cutscenes and lessons on the grounds play normally; flying practice can only be repeated later by disabling this option.");
+        Row("Broom");
+        if (ImGui::Checkbox("Land the broom on any flat surface (experimental)", &s.broom_land_flat)) Changed();
+        ImGui::TextDisabled("On: over a flat roof or a wall's top, land as in a landing zone. Off: only the game's landing zones.");
         ImGui::EndTabItem();
     }
     if (tabs && !start && ImGui::BeginTabItem("Debug")) {

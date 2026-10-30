@@ -41,6 +41,8 @@ static struct { uint32_t fr; unsigned tests, culled; } g_frs[8];
 #define CAMERA_FRUSTUM 0x50C1D4u
 
 extern int hpcos_Widescreen(void); /* renderer/xdk/hle_d3d8.cpp: booted in 16:9 */
+extern uint32_t hpcos_FovPercent(void); /* renderer/app/app.cpp: the field of view slider, 80 to 130 */
+extern int hpcos_InGameView(void);       /* hle_video.c: the game itself is up (not the inventory) */
 
 /* the second test's frustum is the camera's widened to the picture shown plus a margin (RECOMP_CULL_MARGIN, degrees,
  * default 8): objects at the screen's edges vanished as the camera turned (2026-10-25, the Burrow's barn), and after a
@@ -62,11 +64,32 @@ static float cull_margin(void)
 
 static unsigned g_widened;
 
+/* draw_all_objects: every room of the loaded levels drawn, not only those this frame's doorway walk reached: the
+ * visibility pass (sub_00049EB0) marks them all seen with the camera's whole view, as the broom's room list does on
+ * the grounds, and the room draw (sub_00048F60) no longer skips an unmarked one (tools/patch_gen.py); their objects
+ * are still culled one by one below */
+int hpcos_AllRooms(void) { return app_DrawAll(); }
+
+/* the grounds' path warps (tools/patch_gen.py's fix in sub_000E6860, the grounds' script): standing in a warp zone
+ * (type 0x52000166) or coming near a warp object (sub_000E6760) fades out and puts Harry at its destination, and the
+ * area switch there (sub_000E4470, sub_000E5E90) hides every piece of the grounds not on the new area's list. Off,
+ * the warps are passed over and every area switch takes the broom's area (0xD, sub_00052D60): the whole grounds drawn
+ * and solid but room 0xFA, as when flying */
+int app_GroundsWarps(void);
+int hpcos_GroundsWarps(void) { return app_GroundsWarps(); }
+
+/* F10's broom option: any flat surface is a landing zone (tools/patch_gen.py's fix in sub_00050300, hle_trainer.c) */
+int app_BroomLandFlat(void);
+int hpcos_BroomLandFlatOn(void) { return app_BroomLandFlat(); }
+
 static void test_widened(void)
 {
     uint32_t f = CAMERA_FRUSTUM;
     float s[4] = {MEMF(f), MEMF(f + 4), MEMF(f + 8), MEMF(f + 0xC)}, m = cull_margin();
     float v = fmaxf(fabsf(s[2]), fabsf(s[3]));
+    /* the picture as the field of view slider widens it (hle_shots.c), so objects at its sides are drawn */
+    uint32_t pct = hpcos_InGameView() ? hpcos_FovPercent() : 100u;
+    if (pct > 100) v = atanf(tanf(v) * (float)pct / 100.0f);
     float h = fmaxf(fmaxf(fabsf(s[0]), fabsf(s[1])), atanf(tanf(v) * (hpcos_Widescreen() ? 16.0f / 9.0f : 4.0f / 3.0f)));
     h = fminf(h + m, 1.4f), v = fminf(v + m, 1.4f);
     MEMF(f) = -h, MEMF(f + 4) = h, MEMF(f + 8) = v, MEMF(f + 0xC) = -v;
@@ -448,6 +471,91 @@ static void obj_trace_end(const char *fn, uint32_t obj, uint32_t seq0, uint32_t 
             fn, obj, seq0, hpcos_draw_seq, MEM32(obj + 0xE8), MEM32(obj + 0x114), MEM32(obj + 0xDC), MEM32(obj + 0x134),
             ret, p[0], p[1], p[2]);
     g_obj_last_seq = hpcos_draw_seq;
+}
+
+/* [FLAMES] (RECOMP_TRIG_TRACE): the torches' flames are particles, objects with model 0x1D4660 (the F8 trace, 2026-10-30:
+ * ~190 drawn beside lit torches, none where they are unlit, all from the draw-list walk). Draw lists take objects through
+ * the sorted insert sub_00049440 (this = the list, [esp+4] the node, whose +0 is the object, [esp+8] its priority); every
+ * 2 s this counts the particles inserted and the title's code that inserted them, to find what leaves them out by
+ * distance. Built into the recompile with --exclude-manual: gen's body is sub_00049440_gen */
+extern void sub_00049440_gen(void);
+void sub_00049440(void)
+{
+    static int on = -1;
+    if (on < 0) on = getenv("RECOMP_TRIG_TRACE") && *getenv("RECOMP_TRIG_TRACE") != '0';
+    if (on) {
+        enum { kChains = 8 };
+        static uint32_t chain[kChains][4], count[kChains], total;
+        static DWORD last;
+        uint32_t node = MEM32(g_esp + 4), obj = node ? MEM32(node) : 0;
+        if (obj && MEM32(obj + 0x134) == 0x1D4660u) {
+            uint32_t c[4] = {MEM32(g_esp), 0, 0, 0};
+            int found = 1;
+            for (uint32_t i = 3; i < 96 && found < 4; i++) {  /* the title's return addresses above it, a call before each */
+                uint32_t v = MEM32(g_esp + 4 * i);
+                if (v < 0x11005 || v >= 0x130620) continue;
+                if (MEM8(v - 5) == 0xE8 || MEM8(v - 2) == 0xFF || MEM8(v - 3) == 0xFF || MEM8(v - 6) == 0xFF) c[found++] = v;
+            }
+            int k;
+            for (k = 0; k < kChains && count[k] && memcmp(chain[k], c, sizeof c); k++) {}
+            if (k < kChains) {
+                if (!count[k]) memcpy(chain[k], c, sizeof c);
+                count[k]++;
+            }
+            total++;
+        }
+        DWORD now = GetTickCount();
+        static uint32_t prev;
+        if (now - last > 2000 && (total || prev)) {  /* quiet while there are none, one line when they stop */
+            fprintf(stderr, "[FLAMES] flame particles put in draw lists, last 2 s: %u\n", total);
+            for (int k = 0; k < kChains && count[k]; k++)
+                fprintf(stderr, "[FLAMES]   %u from %08X %08X %08X %08X\n", count[k], chain[k][0], chain[k][1], chain[k][2],
+                        chain[k][3]);
+            memset(count, 0, sizeof count);
+            prev = total, total = 0, last = now;
+        } else if (now - last > 2000) {
+            last = now;
+        }
+    }
+    sub_00049440_gen();
+}
+
+/* [TEXT] (RECOMP_TEXT_TRACE=1): the game's text lookup sub_0003BAC0 (__thiscall, this = the text tables 0x53E754, ret 4:
+ * a text id; returns its UTF-16 string, 0x1E15F0 when missing): subtitles, prompts and menus all take their words
+ * from it. Each id with its text and the title's code that asked, once per id every 5 s, to find a spoken line's id
+ * and what shows and clears its subtitle (2026-10-30). Built into the recompile with --exclude-manual: gen's body is
+ * sub_0003BAC0_gen */
+extern void sub_0003BAC0_gen(void);
+void sub_0003BAC0(void)
+{
+    static int on = -1;
+    if (on < 0) on = getenv("RECOMP_TEXT_TRACE") && *getenv("RECOMP_TEXT_TRACE") != '0';
+    uint32_t id = on ? MEM32(g_esp + 4) : 0, ret = on ? MEM32(g_esp) : 0, up = 0;
+    if (on) {  /* the next of the title's return addresses above, a call before it: who asked the asker */
+        for (uint32_t i = 2; i < 64 && !up; i++) {
+            uint32_t v = MEM32(g_esp + 4 * i);
+            if (v >= 0x11005 && v < 0x130620 && (MEM8(v - 5) == 0xE8 || MEM8(v - 2) == 0xFF || MEM8(v - 3) == 0xFF || MEM8(v - 6) == 0xFF)) up = v;
+        }
+    }
+    sub_0003BAC0_gen();
+    if (!on) return;
+    enum { kSeen = 64 };
+    static uint32_t seen_id[kSeen];
+    static DWORD seen_at[kSeen];
+    static int next;
+    DWORD now = GetTickCount();
+    for (int k = 0; k < kSeen; k++)
+        if (seen_id[k] == id && now - seen_at[k] < 5000) return;
+    seen_id[next] = id, seen_at[next] = now, next = (next + 1) % kSeen;
+    char text[200];
+    int n = 0;
+    for (uint32_t a = eax; eax && n < (int)sizeof text - 1; a += 2) {
+        uint16_t c = MEM16(a);
+        if (!c) break;
+        text[n++] = c == 0x2019 ? '\'' : (c < 0x80 ? (char)c : '?');
+    }
+    text[n] = 0;
+    fprintf(stderr, "[TEXT] %lu id %08X from %08X %08X: %s\n", (unsigned long)now, id, ret, up, text);
 }
 
 extern void sub_00031E20_gen(void);

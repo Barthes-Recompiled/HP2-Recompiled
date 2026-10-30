@@ -17,6 +17,9 @@ typedef struct {
 // image (MAX_PATH), TRUE. FALSE when there is nothing to unpack.
 BOOL xiso_Find(const WCHAR* dir, WCHAR* image);
 
+// The same, whether or not default.xbe is there: the image to write damaged files again from (gamefiles.h).
+BOOL xiso_FindAny(const WCHAR* dir, WCHAR* image);
+
 // Unpacks image into dir. Files already there whole are kept (a stopped unpack carries on), default.xbe is
 // written last, so a folder whose unpacking stopped part-way is never taken for a complete one.
 BOOL xiso_Extract(const WCHAR* image, const WCHAR* dir, XisoProgress* p);

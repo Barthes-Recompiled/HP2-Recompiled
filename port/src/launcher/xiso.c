@@ -187,6 +187,11 @@ BOOL xiso_Find(const WCHAR* dir, WCHAR* image) {
     WCHAR path[MAX_PATH];
     swprintf_s(path, MAX_PATH, L"%ls\\default.xbe", dir);
     if (GetFileAttributesW(path) != INVALID_FILE_ATTRIBUTES) return FALSE;     // already unpacked
+    return xiso_FindAny(dir, image);
+}
+
+BOOL xiso_FindAny(const WCHAR* dir, WCHAR* image) {
+    WCHAR path[MAX_PATH];
     swprintf_s(path, MAX_PATH, L"%ls\\*", dir);
     WIN32_FIND_DATAW fd;
     HANDLE f = FindFirstFileW(path, &fd);

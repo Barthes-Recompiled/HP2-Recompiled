@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""The port's own icon, drawn from simple shapes (no game artwork): a wand with a silver sparkle on a dark green
-tile (the hpps port's icon in Chamber of Secrets colours).
+"""The port's own icon, drawn from simple shapes (no game artwork): a wand with a gold sparkle on a tile in the
+launcher's colours (launcher.cpp, DrawBackground), one palette a game.
 
-    python tools/make_icon.py res/app.ico [preview.png]
+    python tools/make_icon.py cos|ps|poa res/app.ico [preview.png]
 
-Original artwork made for this repository: the exes' icon (CMakeLists.txt embeds res/app.ico). Standard library only: shapes are rasterised 4x supersampled, then box
-filtered to 16, 24, 32, 48, 64, 128 and 256 px PNG entries.
+Original artwork made for these repositories: the exes' icon (CMakeLists.txt embeds res/app.ico). Standard library
+only: shapes are rasterised 4x supersampled, then box filtered to 16, 24, 32, 48, 64, 128 and 256 px PNG entries.
 """
 import math
 import struct
@@ -13,6 +13,16 @@ import sys
 import zlib
 
 SS = 4  # supersampling
+
+# the launchers' backdrops, top and bottom (IM_COL32 in DrawBackground), and the title's gold (222, 186, 92)
+PALETTES = {
+    "cos": ((40, 96, 62), (16, 44, 28)),   # green
+    "ps": ((124, 10, 2), (48, 4, 4)),      # Gryffindor scarlet
+    "poa": ((84, 44, 128), (30, 14, 52)),  # purple
+}
+GOLD = (222 / 255, 186 / 255, 92 / 255, 1.0)
+GOLD_LIGHT = (0.98, 0.90, 0.66, 1.0)
+TOP = BOTTOM = None  # set from the palette in main()
 
 
 def inside_round_rect(x, y, x0, y0, x1, y1, r):
@@ -74,22 +84,23 @@ def render(n):
             c = (0.0, 0.0, 0.0, 0.0)
             if inside_round_rect(x, y, 8 * s, 8 * s, 248 * s, 248 * s, 52 * s):
                 t = y / N
-                c = mix((0.10, 0.30, 0.20, 1.0), (0.03, 0.10, 0.06, 1.0), t)
+                c = mix(TOP, BOTTOM, t)
                 # a soft glow behind the sparkle
                 d = math.hypot(x - glow_c[0], y - glow_c[1]) / glow_r
                 if d < 1:
-                    c = over(c, (0.80, 0.90, 0.85, 0.35 * (1 - d) ** 2))
+                    c = over(c, (GOLD[0], GOLD[1], GOLD[2], 0.35 * (1 - d) ** 2))
             # the wand's rod: distance from the segment
             t = ((x - ax) * ux + (y - ay) * uy)
             if 0 <= t <= length:
                 dist = abs((x - ax) * uy - (y - ay) * ux)
                 taper = half * (1.0 - 0.35 * t / length)
+                if taper < dist <= taper + 3 * s:  # a pale rim, so the wood stands out on the red tile too
+                    c = over(c, (GOLD_LIGHT[0], GOLD_LIGHT[1], GOLD_LIGHT[2], 0.55))
                 if dist <= taper:
                     wood = (0.42, 0.25, 0.13, 1.0) if t > length * 0.32 else (0.27, 0.15, 0.08, 1.0)
                     shade = 0.75 + 0.25 * (1 - dist / taper)
                     c = over(c, (wood[0] * shade, wood[1] * shade, wood[2] * shade, 1.0))
-            for pts, col in ((big, (0.88, 0.92, 0.94, 1.0)), (small1, (0.80, 0.95, 0.85, 1.0)),
-                             (small2, (0.80, 0.95, 0.85, 1.0))):
+            for pts, col in ((big, GOLD), (small1, GOLD_LIGHT), (small2, GOLD_LIGHT)):
                 if inside_poly(x, y, pts):
                     c = over(c, col)
             row.append(c)
@@ -123,8 +134,12 @@ def png(px, n):
 
 
 def main():
-    if len(sys.argv) < 2:
+    global TOP, BOTTOM
+    if len(sys.argv) < 3 or sys.argv[1] not in PALETTES:
         sys.exit(__doc__)
+    top, bottom = PALETTES[sys.argv.pop(1)]
+    TOP = tuple(v / 255 for v in top) + (1.0,)
+    BOTTOM = tuple(v / 255 for v in bottom) + (1.0,)
     sizes = [16, 24, 32, 48, 64, 128, 256]
     images = [png(render(n), n) for n in sizes]
     head = struct.pack("<HHH", 0, 1, len(images))

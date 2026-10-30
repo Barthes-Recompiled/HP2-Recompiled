@@ -66,16 +66,27 @@ constexpr uint64_t kStaleFrames = 8;  // frames a target may go unused and still
 // xboxrecomp debug (RECOMP_PERF, read by hle_d3d8.cpp's [PERF] line through hpcos_GpuStats): GPU time of the game's
 // drawing and of the shown frame's passes, frames timed, and the targets copied or resolved for reading (and samples)
 std::atomic<uint64_t> g_gpu_scene_ns, g_gpu_post_ns, g_gpu_frames, g_feedback_copies, g_feedback_px;
+// and the bytes the draws copied into the frame's upload ring, and the times a full ring made the frame wait for the GPU
+std::atomic<uint64_t> g_upload_bytes, g_ring_waits;
 // xboxrecomp debug: one frame's texture and pipeline work for hle_d3d8.cpp's [HITCH] line (hpcos_HitchGpuStats):
 // textures made and the time making their resources, uploaded (decoded and copied up) with their bytes and time, pipelines from the library or the driver
 // and their time, draws left out for a pipeline still being made
 std::atomic<uint64_t> g_hitch_tex_new, g_hitch_texnew_ns, g_hitch_tex_up, g_hitch_tex_bytes, g_hitch_tex_ns, g_hitch_pso_n, g_hitch_pso_ns,
     g_hitch_pso_drops;
-const bool g_perf_on = [] {
-    const char* e = std::getenv("RECOMP_PERF");
-    return e && *e && *e != '0';
-}();
-constexpr uint64_t kUploadSize = 64ull << 20;
+// read on first use, not at load: debug.env sets RECOMP_PERF after the static initialisers have run
+struct PerfFlag {
+    operator bool() const {
+        static const bool on = [] {
+            const char* e = std::getenv("RECOMP_PERF");
+            return e && *e && *e != '0';
+        }();
+        return on;
+    }
+};
+const PerfFlag g_perf_on;
+// the frame's upload ring: every draw copies its vertices and indices in. 64 MB may fill within a frame on the Hogwarts
+// grounds drawn whole, and a full ring waits for the GPU (Submit(true) in Draw); 3 frames x 192 MB of upload memory
+constexpr uint64_t kUploadSize = 192ull << 20;
 // a draw starting with less than this left in the frame's ring waits for the GPU and starts the ring over
 constexpr uint64_t kUploadReserve = 8ull << 20;
 constexpr uint32_t kSrvCount = 3 * 32768;
@@ -107,7 +118,7 @@ constexpr float kSdrWhiteUnit = 0.08f;  // Windows' SDR white level: 1000 is 80 
 constexpr auto kHoldMax = std::chrono::milliseconds(3000);
 
 const char* kBlitHlsl = R"(
-cbuffer B : register(b1) { float4 uvrect; float4 opts; float4 cb0; float4 cb1; float4 cb2; };
+cbuffer B : register(b1) { float4 uvrect; float4 opts; float4 cb0; float4 cb1; float4 cb2; float4 grade; float4 sharp; };
 Texture2D img : register(t0);
 Texture2D lut : register(t1);
 SamplerState ls : register(s0);
@@ -127,6 +138,36 @@ float4 psmain(O i) : SV_Target {
     for (int y = 0; y < n; y++)
         for (int x = 0; x < n; x++) c += img.SampleLevel(ls, i.uv + px * ((float2(x, y) + 0.5) / n - 0.5), 0);
     c /= n * n;
+    // xboxrecomp: contrast adaptive sharpening (after AMD's CAS): the four neighbours a source texel or an output
+    // pixel away, whichever is wider, weighted by how much room the local contrast leaves; sharp.x the amount
+    if (sharp.x > 0) {
+        float w, h;
+        img.GetDimensions(w, h);
+        float2 d = max(px, 1 / float2(w, h));
+        float3 a = img.SampleLevel(ls, i.uv - float2(0, d.y), 0).rgb, b = img.SampleLevel(ls, i.uv - float2(d.x, 0), 0).rgb;
+        float3 e = img.SampleLevel(ls, i.uv + float2(d.x, 0), 0).rgb, f = img.SampleLevel(ls, i.uv + float2(0, d.y), 0).rgb;
+        float3 mn = min(c.rgb, min(min(a, b), min(e, f))), mx = max(c.rgb, max(max(a, b), max(e, f)));
+        float3 amp = sqrt(saturate(min(mn, 2 - mx) / max(mx, 1e-4)));
+        float3 k = amp * -lerp(0.125, 0.2, sharp.x);
+        c.rgb = saturate((c.rgb + (a + b + e + f) * k) / (1 + 4 * k));
+    }
+    // xboxrecomp: colour grading: grade.x saturation, grade.y vibrance (dull colours more), grade.z warmth (-1..1)
+    if (grade.w > 0) {
+        float l = dot(c.rgb, float3(0.2126, 0.7152, 0.0722));
+        float chroma = max(c.r, max(c.g, c.b)) - min(c.r, min(c.g, c.b));
+        float s = grade.x * (1 + grade.y * (1 - saturate(chroma * 2)));
+        c.rgb = saturate(lerp(l.xxx, c.rgb, s));
+        c.rgb = saturate(c.rgb * (1 + grade.z * float3(0.08, 0, -0.08)));
+    }
+    // xboxrecomp: vignette (sharp.y) over the shown picture's corners, film grain (sharp.z) moving each frame (sharp.w)
+    if (sharp.y > 0 || sharp.z > 0) {
+        float2 t = (i.uv - uvrect.xy) / uvrect.zw - 0.5;
+        t.x *= uvrect.z / uvrect.w * 1.333;
+        c.rgb *= 1 - sharp.y * 0.6 * smoothstep(0.35, 0.95, length(t) * 1.25);
+        float2 g = floor(i.p.xy) + frac(sharp.w * float2(0.618034, 0.414214)) * 1000;
+        float noise = frac(sin(dot(g, float2(12.9898, 78.233))) * 43758.5453) - 0.5;
+        c.rgb = saturate(c.rgb + noise * sharp.z * 0.12 * (1 - abs(dot(c.rgb, 1.0 / 3) * 2 - 1) * 0.5));
+    }
     c.rgb *= opts.w;
     // xboxrecomp: a colour-blind correction (cb0..2 the rows of a linear RGB matrix, cb0.w on), before the ramp
     if (cb0.w > 0) {
@@ -168,6 +209,15 @@ float4 bright(O i) : SV_Target {
     float3 c = 0;
     for (int k = 0; k < 4; k++) c += src.SampleLevel(ls, i.uv + p1.xy * float2(k & 1 ? 1 : -1, k & 2 ? 1 : -1), 0).rgb;
     return float4(max(c * 0.25 * p0.x * expo.Load(int3(0, 0, 0)) - 1, 0), 1);
+}
+// xboxrecomp: the scene bloom's (no headroom: the console's colours end at white). p0.x the knee; what passes it,
+// rising softly from it, at a quarter size
+float4 lbright(O i) : SV_Target {
+    float3 c = 0;
+    for (int k = 0; k < 4; k++) c += src.SampleLevel(ls, i.uv + p1.xy * float2(k & 1 ? 1 : -1, k & 2 ? 1 : -1), 0).rgb;
+    c *= 0.25;
+    float l = max(c.r, max(c.g, c.b)), t = saturate((l - p0.x) / (1 - p0.x));
+    return float4(c * t * t, 1);
 }
 // p1: step; 9 gaussian taps in 5 bilinear reads
 float4 blur(O i) : SV_Target {
@@ -338,16 +388,27 @@ float4 smaa_blend(SmaaBlendV i) : SV_Target { return SMAANeighborhoodBlendingPS(
 // stencil bit 0 is the world, the sky is drawn where it is clear and counts as the far plane
 const char* kAoHlsl = R"(
 cbuffer A : register(b1) { float4 proj; float4 zp; float4 vp; float4 opt; float4 fog; };
+// xboxrecomp (hppoa): NOSTENCIL, every pixel's depth as it is (this title marks nothing in the stencil; a sky drawn
+// without depth leaves the clear, the far plane)
 #ifdef MS
 Texture2DMS<float> depth : register(t0);
 Texture2DMS<uint2> stencil : register(t2);
+#ifdef NOSTENCIL
+float Raw(int2 p) { return depth.Load(p, 0); }
+#else
 float Raw(int2 p) { return stencil.Load(p, 0).g & 1 ? depth.Load(p, 0) : 1; }
+#endif
 #else
 Texture2D<float> depth : register(t0);
 Texture2D<uint2> stencil : register(t2);
+#ifdef NOSTENCIL
+float Raw(int2 p) { return depth.Load(int3(p, 0)); }
+#else
 float Raw(int2 p) { return stencil.Load(int3(p, 0)).g & 1 ? depth.Load(int3(p, 0)) : 1; }
 #endif
+#endif
 Texture2D<float2> ao : register(t1);
+Texture2D<float4> scene : register(t3);  // xboxrecomp: the frame's colour, for dof
 float4 vs(uint id : SV_VertexID) : SV_Position { return float4(float2((id << 1) & 2, id & 2) * float2(2, -2) + float2(-1, 1), 0, 1); }
 // view space position of a pixel. proj: 1 / scale xy, centre xy; zp: z = x / (depth - y); vp: viewport in pixels
 float3 View(float2 px) {
@@ -449,6 +510,29 @@ float Smooth(float2 pos, out float z) {
 float2 occlusion_blur(float4 pos : SV_Position) : SV_Target {
     float z, a = Smooth(pos.xy, z);
     return float2(a, z);
+}
+// xboxrecomp (hppoa): cutscene depth of field. The focus is the nearest of 9 points round the middle (the figure
+// being shown); what lies behind it blurs with its distance past it, up to opt.x pixels across. 16 taps over a
+// disc, each counted only as far as its own blur reaches, so a sharp figure does not smear into the background
+float Coc(float z, float focus) { return saturate((z - focus) / (focus * 1.5)); }
+float4 dof(float4 pos : SV_Position) : SV_Target {
+    float focus = 1e30;
+    for (int y = -1; y <= 1; y++)
+        for (int x = -1; x <= 1; x++) focus = min(focus, View(vp.xy + vp.zw * (0.5 + float2(x, y) * 0.12)).z);
+    float4 c = scene.Load(int3(pos.xy, 0));
+    float r = Coc(View(pos.xy).z, focus) * opt.x;
+    if (r < 0.5) return c;
+    float4 sum = c;
+    float n = 1;
+    for (int i = 0; i < 16; i++) {
+        float f = sqrt((i + 0.5) / 16), t = i * 2.3999632;
+        float2 o = float2(cos(t), sin(t)) * r * f;
+        int2 q = clamp(int2(pos.xy + o), int2(vp.xy), int2(vp.xy + vp.zw) - 1);
+        float w = saturate(Coc(View(q).z, focus) * opt.x / max(length(o), 1));
+        sum += scene.Load(int3(q, 0)) * w;
+        n += w;
+    }
+    return sum / n;
 }
 // fog: the game's, already blended over the scene, fades the occlusion out as it thickens
 float4 occlusion_apply(float4 pos : SV_Position) : SV_Target {
@@ -598,6 +682,8 @@ struct Target {
     DXGI_FORMAT fmt = kBgra;
     bool hdr = false;              // colour held over kHeadroom until resolved
     uint64_t hdr_frame = ~0ull;    // the present count it last went HDR, once a frame
+    uint64_t scene_frame = ~0ull;  // xboxrecomp: the present count it last had 3D drawn in it (SceneBloom)
+    uint64_t bloom_frame = ~0ull;  // xboxrecomp: the present count its scene was last bloomed
 };
 
 // MemSig hashes a surface up to kSigWholeMax bytes whole, a bigger one as evenly spaced samples
@@ -801,6 +887,7 @@ public:
     void Flush() override;
     void SetGamma(const uint8_t* ramp) override;
     void Occlusion(const State& s, const float p[kOcclusionParams]) override;
+    void OcclusionOn(const Surface& rts, const Surface& zss, const Viewport& v, const float p[kOcclusionParams]);
 
 private:
     struct Frame {
@@ -875,6 +962,17 @@ private:
     bool EnsureExposureTarget();
     float UpdateExposureBlend();
     void DrawBloom(const PostInputs& in, const Target& t, uint32_t bw, uint32_t bh);
+    void SceneBloom(Target& t);
+    bool BloomForScene(const State& s, const Assembled& a);
+    // xboxrecomp (hppoa): the end of a frame's 3D scene: occlusion, cutscene depth of field, bloom
+    void SceneEnd(Target& t);
+    bool SceneCamera(float p[kOcclusionParams]) const;
+    void SceneDof(Target& t);
+    float scene_proj_[16] = {};          // the scene's last fixed function 3D draw: its projection,
+    Viewport scene_vp_;                  // viewport,
+    Surface scene_rt_, scene_zs_;        // target and depth,
+    uint32_t scene_fog_[5] = {};         // fog: enable, table mode, start, end, density
+    uint64_t scene_cam_frame_ = ~0ull;   // and the present count it was drawn in
     // Smaa, then its steps in call order, each callee right after its caller
     struct SmaaLookup {
         DXGI_FORMAT fmt;
@@ -898,6 +996,7 @@ private:
         D3D12_CPU_DESCRIPTOR_HANDLE rtv;
         ID3D12Resource* depth = nullptr;
         ID3D12Resource* src = nullptr;
+        ID3D12Resource* color = nullptr;  // xboxrecomp: kAoHlsl's scene (dof)
         float step_x = 0;
         float step_y = 0;
     };
@@ -1522,6 +1621,7 @@ void D3D12Backend::SetBlitTarget(D3D12_CPU_DESCRIPTOR_HANDLE rtv, uint32_t w, ui
 D3D12Backend::Alloc D3D12Backend::Upload(uint64_t size, uint64_t align) {
     Frame& f = CurrentFrame();
     uint64_t o = (f.used + align - 1) & ~(align - 1);
+    if (g_perf_on) g_upload_bytes += size;
     if (o + size <= kUploadSize) {
         f.used = o + size;
         return {f.upload.Get(), o, f.map + o, f.upload->GetGPUVirtualAddress() + o};
@@ -1870,6 +1970,9 @@ void ColorBlindMatrix(const app::Settings& set, float out[12]) {
     out[3] = 1;
 }
 
+// xboxrecomp: the grading sliders off their neutral places
+bool GradingOn(const app::Settings& s) { return s.saturation != 100 || s.vibrance != 0 || s.warmth != 50; }
+
 void D3D12Backend::Blit(ID3D12Resource* src, DXGI_FORMAT fmt, const float uvrect[4], const BlitOptions& o) {
     uint32_t slot = AllocSrvSlots(2);
     D3D12_SHADER_RESOURCE_VIEW_DESC sv{};
@@ -1882,10 +1985,24 @@ void D3D12Backend::Blit(ID3D12Resource* src, DXGI_FORMAT fmt, const float uvrect
     dev_->CreateShaderResourceView(lut_.Get(), &sv, Cpu(srv_heap_.Get(), slot + 1, srv_inc_));
     uint32_t si = EnsureBlitSamplers();
     Alloc cb = Upload(256, 256);
-    float c[20] = {uvrect[0], uvrect[1], uvrect[2], uvrect[3],
+    float c[28] = {uvrect[0], uvrect[1], uvrect[2], uvrect[3],
                    o.gamma ? 1.0f : 0.0f, o.alpha ? 1.0f : 0.0f, float(o.taps), o.mul};
-    // xboxrecomp: the colour-blind correction on the finished frame (the pass through the gamma lookup)
-    if (o.gamma) ColorBlindMatrix(app::Get(), c + 8);
+    // xboxrecomp: the colour-blind correction, sharpening and grading on the finished frame (the pass through the
+    // gamma lookup)
+    if (o.gamma) {
+        const app::Settings& set = app::Get();
+        ColorBlindMatrix(set, c + 8);
+        if (GradingOn(set)) {
+            c[20] = float(std::min(set.saturation, 200u)) / 100.0f;
+            c[21] = float(std::min(set.vibrance, 100u)) / 100.0f;
+            c[22] = (float(std::min(set.warmth, 100u)) - 50.0f) / 50.0f;
+            c[23] = 1;
+        }
+        c[24] = float(std::min(set.sharpen, 100u)) / 100.0f;
+        c[25] = float(std::min(set.vignette, 100u)) / 100.0f;
+        c[26] = float(std::min(set.grain, 100u)) / 100.0f;
+        c[27] = float(presents_ % 997);
+    }
     std::memcpy(cb.cpu, c, sizeof(c));
     DrawFullScreen(EnsureBlitPipeline(o.rtv, o.over, o.samples), cb.gpu, slot, si);
 }
@@ -2200,6 +2317,38 @@ void D3D12Backend::DrawBloom(const PostInputs& in, const Target& t, uint32_t bw,
     Transition(bloom_[0].Get(), bloom_state_[0], D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
 }
 
+// xboxrecomp (hppoa): bloom for a console picture (0..1, no HDR target): what passes the knee in the 3D scene,
+// blurred at a quarter size twice over, added back before the HUD goes on top. Once a frame per target
+constexpr float kSceneBloomKnee = 0.7f;
+void D3D12Backend::SceneBloom(Target& t) {
+    t.bloom_frame = presents_;
+    const app::Settings& set = app::Get();
+    if (!set.bloom || !set.bloom_strength) return;
+    ID3D12Resource* fb = EnsureFeedbackCopy(t);
+    if (!fb) return;
+    uint32_t bw = std::max(1u, t.w / kBloomShrink);
+    uint32_t bh = std::max(1u, t.h / kBloomShrink);
+    if (!EnsureBloomTargets(bw, bh)) return;
+    PostInputs in{{fb, nullptr, nullptr}, {t.fmt, kBloomFormat, kExposureFormat}};
+    Transition(bloom_[0].Get(), bloom_state_[0], D3D12_RESOURCE_STATE_RENDER_TARGET);
+    float pb[8] = {kSceneBloomKnee, 0, 0, 0, 1.0f / t.w, 1.0f / t.h};
+    DrawPostPass("lbright", {PostRtv(kBloomRtv), kBloomFormat, bw, bh}, in, pb);
+    for (int pass = 0; pass < 4; pass++) {  // across, down, across, down: a wider glow
+        int from = pass & 1, to = 1 - from;
+        Transition(bloom_[from].Get(), bloom_state_[from], D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+        Transition(bloom_[to].Get(), bloom_state_[to], D3D12_RESOURCE_STATE_RENDER_TARGET);
+        PostInputs b{{bloom_[from].Get(), nullptr, nullptr}, {kBloomFormat, kBloomFormat, kBloomFormat}};
+        float pp[8] = {0, 0, 0, 0, pass & 1 ? 0 : 1.0f / bw, pass & 1 ? 1.0f / bh : 0};
+        DrawPostPass("blur", {PostRtv(kBloomRtv + to), kBloomFormat, bw, bh}, b, pp);
+    }
+    Transition(bloom_[0].Get(), bloom_state_[0], D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+    in.res[1] = bloom_[0].Get();
+    Transition(t.res.Get(), t.state, D3D12_RESOURCE_STATE_RENDER_TARGET);
+    // the HDR resolve's last pass with no headroom and no tone mapping: the frame plus the glow
+    float pt[8] = {1, 0, float(std::min(set.bloom_strength, 100u)) / 100.0f * 1.5f, 0};
+    DrawPostPass("tone", {Cpu(rtv_heap_.Get(), t.view, rtv_inc_), t.fmt, t.w, t.h, t.samples}, in, pt);
+}
+
 // the frame is read: exposure, bloom and tone mapping take the target back to 0..1
 void D3D12Backend::Resolve(Target& t) {
     if (cap_) {
@@ -2355,7 +2504,7 @@ ID3D12PipelineState* D3D12Backend::EnsureAoPipeline(const AoPass& pass, bool ms)
     uint64_t seed = uint64_t(pass.out) | uint64_t(ms) << 32 | uint64_t(pass.samples) << 40;
     auto& pso = blit_psos_[Hash(pass.entry, std::strlen(pass.entry), seed)];
     if (pso) return pso.Get();
-    std::string text = std::string(ms ? "#define MS 1\n" : "") + kAoHlsl;
+    std::string text = std::string(ms ? "#define MS 1\n" : "") + "#define NOSTENCIL 1\n" + kAoHlsl;
     ID3DBlob* vs = Compile(text, "vs", "vs_5_0");
     ID3DBlob* ps = Compile(text, pass.entry, "ps_5_0");
     if (!vs || !ps) return nullptr;
@@ -2374,12 +2523,13 @@ ID3D12PipelineState* D3D12Backend::EnsureAoPipeline(const AoPass& pass, bool ms)
 }
 
 void D3D12Backend::CreateAoViews(uint32_t slot, const AoPass& pass, bool ms) {
-    ID3D12Resource* reads[4] = {pass.depth, pass.src, pass.depth, nullptr};
+    ID3D12Resource* reads[4] = {pass.depth, pass.src, pass.depth, pass.color};
     for (int i = 0; i < 4; i++) {
         ID3D12Resource* r = reads[i];
         D3D12_SHADER_RESOURCE_VIEW_DESC sv{};
         sv.Format = r ? kAoViewFormats[i] : kBgra;
-        sv.ViewDimension = r && ms ? D3D12_SRV_DIMENSION_TEXTURE2DMS : D3D12_SRV_DIMENSION_TEXTURE2D;
+        // multisampled: the depth and its stencil; the colour dof reads is the resolved copy
+        sv.ViewDimension = r && ms && (i == 0 || i == 2) ? D3D12_SRV_DIMENSION_TEXTURE2DMS : D3D12_SRV_DIMENSION_TEXTURE2D;
         sv.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
         if (sv.ViewDimension == D3D12_SRV_DIMENSION_TEXTURE2D) {
             sv.Texture2D.MipLevels = 1;
@@ -2432,22 +2582,24 @@ void D3D12Backend::DrawOcclusionPasses(Target& rt, Target& ds, const AoFrame& f)
 }
 
 // p: 1 / the projection's x and y scale, its x and y centre, then view z = p[4] / (ndc depth - p[5])
-void D3D12Backend::Occlusion(const State& s, const float p[kOcclusionParams]) {
-    Target* rt = FindTarget(s.rt, false);
-    Target* ds = FindTarget(s.zs, true);
+void D3D12Backend::Occlusion(const State& s, const float p[kOcclusionParams]) { OcclusionOn(s.rt, s.zs, s.viewport, p); }
+
+// xboxrecomp: Occlusion for a target and depth named directly (the scene's end, SceneEnd)
+void D3D12Backend::OcclusionOn(const Surface& rts, const Surface& zss, const Viewport& v, const float p[kOcclusionParams]) {
+    Target* rt = FindTarget(rts, false);
+    Target* ds = FindTarget(zss, true);
     // the frame's own scene only, views drawn to smaller targets are left
     if (!rt || !ds || rt->gw != guest_w_ || rt->gh != guest_h_ || ds->w != rt->w || ds->h != rt->h ||
         ds->samples != rt->samples) {
         return;
     }
-    const auto& v = s.viewport;
     float zr = v.max_z - v.min_z;
     D3D12_RECT rect = ScaledViewportRect(v, *rt);
     if (rect.right <= rect.left || rect.bottom <= rect.top || zr <= 0) return;
     if (!EnsureAoTargets(rt->w, rt->h)) return;
     if (cap_) {
-        CapStep(s.rt);
-        fprintf(cap_, "%04u occlusion rt %08X ds %08X\n", cap_i_++, s.rt.data, s.zs.data);
+        CapStep(rts);
+        fprintf(cap_, "%04u occlusion rt %08X ds %08X\n", cap_i_++, rts.data, zss.data);
     }
     LOG_FIRST(1, "d3d12: ambient occlusion %s %ux%u, %u samples, projection %.4f %.4f, view z %.6f / (depth - %.8f)",
               p[9] ? "GTAO" : "SSAO", rt->w, rt->h, ds->samples, 1 / p[0], 1 / p[1], p[4], p[5]);
@@ -3035,6 +3187,113 @@ bool D3D12Backend::EnterHdrForScene(const State& s, const Assembled& a) {
     return true;
 }
 
+// D3DTRANSFORMSTATETYPE indices into s.transforms
+constexpr size_t kTsView = 2;
+constexpr size_t kTsProjection = 3;
+constexpr size_t kTsTexture0 = 16;
+constexpr size_t kTsWorld = 256;
+
+// xboxrecomp (hppoa): a frame's 3D scene goes into the guest sized target with depth written; the first 2D draw after
+// it there (pretransformed, or no depth test, sampling no render target) is the HUD's: the scene is bloomed first
+bool D3D12Backend::BloomForScene(const State& s, const Assembled& a) {
+    Target* t = bound_rt_;
+    if (!t || t->gw != guest_w_ || t->gh != guest_h_ || t->hdr) return true;
+    bool flat = a.pretransformed || !s.rs[kRsZEnable];
+    if (!flat) {
+        if (bound_ds_ && SimpleState(s, kMZWriteEnable)) {
+            t->scene_frame = presents_;
+            // the camera, from a fixed function draw (a vertex program keeps its projection in its constants)
+            bool prog = (s.vs_handle & 1) && s.vs && !s.vs->program.empty();
+            if (!prog) {
+                std::memcpy(scene_proj_, s.transforms[kTsProjection].data(), sizeof(scene_proj_));
+                scene_vp_ = s.viewport;
+                scene_rt_ = s.rt;
+                scene_zs_ = s.zs;
+                scene_fog_[0] = s.rs[kRsFogEnable];
+                scene_fog_[1] = s.rs[kRsFogTableMode];
+                scene_fog_[2] = s.rs[kRsFogStart];
+                scene_fog_[3] = s.rs[kRsFogEnd];
+                scene_fog_[4] = s.rs[kRsFogDensity];
+                scene_cam_frame_ = presents_;
+            }
+        }
+        return true;
+    }
+    if (t->scene_frame != presents_ || t->bloom_frame == presents_) return true;
+    // a view drawn into a texture laid over the scene is not the HUD: the train's window shows the landscape drawn
+    // first, then the compartment after it (the scene ends at the depth clear before the HUD, Clear)
+    for (uint32_t tex : s.textures) {
+        TextureDesc d;
+        if (tex && Describe(tex, d) && targets_.count(TargetKey(d.data, Format(d.format).depth))) return true;
+    }
+    SceneEnd(*t);
+    return bound_rt_ == t || BindTargets(s);
+}
+
+// xboxrecomp (hppoa): kAoHlsl's camera from the scene's projection (row vectors: clip = view * P): 1 / x and y scale
+// and centre as the shader takes them, view z = p4 / (ndc depth - p5), the fog as view z's line (p6, p7, on p8),
+// p9 GTAO. False without a perspective projection this frame
+bool D3D12Backend::SceneCamera(float p[kOcclusionParams]) const {
+    if (scene_cam_frame_ != presents_) return false;
+    const float* m = scene_proj_;
+    float w = m[11];
+    if (std::fabs(w) < 1e-6f || std::fabs(m[0]) < 1e-6f || std::fabs(m[5]) < 1e-6f || std::fabs(m[14]) < 1e-9f) return false;
+    p[0] = w / m[0];
+    p[1] = w / m[5];
+    p[2] = m[8] / w;
+    p[3] = m[9] / w;
+    p[4] = m[14] / w;
+    p[5] = m[10] / w;
+    p[6] = p[7] = p[8] = 0;
+    if (scene_fog_[0]) {
+        float start = Bits(scene_fog_[2]), end = Bits(scene_fog_[3]), dens = Bits(scene_fog_[4]);
+        if (scene_fog_[1] == 3 && end > start) p[6] = 1 / (end - start), p[7] = -start / (end - start), p[8] = 1;
+        else if ((scene_fog_[1] == 1 || scene_fog_[1] == 2) && dens > 0) p[6] = dens / 3, p[8] = 1;
+    }
+    p[9] = app::Get().ambient_occlusion >= 2 ? 1.0f : 0.0f;
+    return true;
+}
+
+extern "C" int hpcos_Cutscene(void);  // hle_shots.c: no cutscene test in this title yet, so 0
+
+void D3D12Backend::SceneEnd(Target& t) {
+    const app::Settings& set = app::Get();
+    float p[kOcclusionParams];
+    bool cam = SceneCamera(p) && scene_rt_.data == t.data;
+    if (cam && set.ambient_occlusion) OcclusionOn(scene_rt_, scene_zs_, scene_vp_, p);
+    if (cam && set.dof && set.dof_strength && hpcos_Cutscene()) SceneDof(t);
+    SceneBloom(t);
+}
+
+// the scene through kAoHlsl's dof into t, read from a copy of it, with the scene's depth
+void D3D12Backend::SceneDof(Target& t) {
+    float p[kOcclusionParams];
+    Target* ds = FindTarget(scene_zs_, true);
+    if (!SceneCamera(p) || !ds || ds->w != t.w || ds->h != t.h || ds->samples != t.samples) return;
+    const auto& v = scene_vp_;
+    float zr = v.max_z - v.min_z;
+    D3D12_RECT rect = ScaledViewportRect(v, t);
+    if (rect.right <= rect.left || rect.bottom <= rect.top || zr <= 0) return;
+    ID3D12Resource* fb = EnsureFeedbackCopy(t);
+    if (!fb) return;
+    float rect_h = float(rect.bottom - rect.top);
+    // opt.x: the widest blur, 1.2 % of the picture's height at full strength
+    float radius = rect_h * 0.012f * float(std::min(app::Get().dof_strength, 100u)) / 100.0f;
+    AoFrame f{.c = {p[0], p[1], p[2], p[3], p[4] * zr, v.min_z + p[5] * zr, 0, 0, float(rect.left), float(rect.top),
+                    float(rect.right - rect.left), rect_h, radius, 0, 0, 0, 0, 0, 0, 0},
+              .rect = rect,
+              .vp = {0, 0, float(t.w), float(t.h), 0, 1},
+              .depth_samples = ds->samples,
+              .gtao = false};
+    bound_rt_ = bound_ds_ = nullptr;
+    Transition(ds->res.Get(), ds->state, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+    Transition(t.res.Get(), t.state, D3D12_RESOURCE_STATE_RENDER_TARGET);
+    AoPass pass{.entry = "dof", .out = t.fmt, .samples = t.samples, .rtv = Cpu(rtv_heap_.Get(), t.view, rtv_inc_),
+                .depth = ds->res.Get(), .color = fb};
+    DrawAoPass(f, pass);
+    t.drawn = true;
+}
+
 constexpr uint32_t kQuadVertices = 6;  // a quad drawn as two triangles
 
 DrawShaders ClassifyShaders(const State& s, const Assembled& a, uint32_t count) {
@@ -3281,12 +3540,6 @@ void InverseTranspose3x3(const float* wv, float* n) {
         }
     }
 }
-
-// D3DTRANSFORMSTATETYPE indices into s.transforms
-constexpr size_t kTsView = 2;
-constexpr size_t kTsProjection = 3;
-constexpr size_t kTsTexture0 = 16;
-constexpr size_t kTsWorld = 256;
 
 void FillTransformConstants(const State& s, GuestSize size, DrawConstants& c) {
     uint32_t gw = size.w;
@@ -4064,9 +4317,13 @@ void D3D12Backend::Draw(const State& s, uint32_t prim, uint32_t start, uint32_t 
     if (!assembled) return CountDrop(kDropAssemble);
     // a versus level's first frame draws everything once (thousands of draws, over 64 MB): past the ring every upload
     // was a buffer of its own, seconds of creating and then freeing them
-    if (CurrentFrame().used > kUploadSize - kUploadReserve) Submit(true);
+    if (CurrentFrame().used > kUploadSize - kUploadReserve) {
+        if (g_perf_on) g_ring_waits++;
+        Submit(true);
+    }
     if (!BindTargets(s)) return CountDrop(kDropTargets);
     if (!EnterHdrForScene(s, a)) return CountDrop(kDropHdr);
+    if (!BloomForScene(s, a)) return CountDrop(kDropTargets);
 
     // vertex shader
     DrawShaders sh = ClassifyShaders(s, a, count);
@@ -4187,6 +4444,12 @@ void D3D12Backend::Clear(const State& s, uint32_t count, const uint8_t* rects, u
         g_ls_clears++;
         g_ls_clear_color = color;
         g_ls_clear_rt = s.rt.data;
+    }
+    // xboxrecomp (hppoa): clearing the scene's depth (before the HUD) ends the scene: occlusion needs that depth
+    if ((flags & kClearZ) && s.zs.data == scene_zs_.data && scene_cam_frame_ == presents_) {
+        Target* t = FindTarget(scene_rt_, false);
+        if (t && t->scene_frame == presents_ && t->bloom_frame != presents_) SceneEnd(*t);
+        bound_rt_ = bound_ds_ = nullptr;
     }
     Target* rt = (flags & kClearTarget) ? EnsureTarget(s.rt, false) : nullptr;
     Target* ds = (flags & (kClearZ | kClearStencil)) ? EnsureTarget(s.zs, true) : nullptr;
@@ -4525,7 +4788,10 @@ void D3D12Backend::BlitFrame(const Target& t, ID3D12Resource* r, bool pillarbox,
     cl_->RSSetScissorRects(1, &scissor);
     // xboxrecomp: the colour-blind filter is in the gamma pass, which a neutral ramp (CoS's own at default brightness)
     // would skip; the lookup is identity then, so only the filter changes the picture
-    if (r) Blit(r, t.fmt, uv, {.gamma = gamma_ || app::Get().colorblind != 0, .rtv = rtv});
+    // (and the sharpening and grading, xboxrecomp)
+    const app::Settings& set = app::Get();
+    if (r) Blit(r, t.fmt, uv, {.gamma = gamma_ || set.colorblind != 0 || set.sharpen != 0 || GradingOn(set) ||
+                                          set.vignette != 0 || set.grain != 0, .rtv = rtv});
 }
 
 // the overlay as the window holds it: a new frame goes up to ov_tex_, under the window's overlay lock
@@ -4799,6 +5065,8 @@ void D3D12Backend::Present(const Surface& front, bool pillarbox) {
     Target* t = EnsureTarget(front, false);
     if (t && LatchCpuWrite(*t)) UploadTarget(*t, front);
     if (t && t->hdr) Resolve(*t);
+    // xboxrecomp: a frame with a scene and no HUD after it is bloomed here
+    if (t && t->scene_frame == presents_ && t->bloom_frame != presents_) SceneEnd(*t);
     if (const app::Settings& s = app::Get(); ramp_dirty_ || (s.brightness << 8 | s.contrast) != ramp_set_)
         UploadGammaRamp(s.brightness, s.contrast);
     Transition(lut_.Get(), lut_state_, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
@@ -5287,7 +5555,7 @@ extern "C" void hpcos_HitchGpuStats(double out[8]) {
     out[7] = double(gpu::g_hitch_texnew_ns.exchange(0)) / 1e6;
 }
 
-extern "C" void hpcos_GpuStats(double out[4], uint32_t frames) {
+extern "C" void hpcos_GpuStats(double out[6], uint32_t frames) {
     uint64_t n = gpu::g_gpu_frames.exchange(0);
     double scene = double(gpu::g_gpu_scene_ns.exchange(0)), post = double(gpu::g_gpu_post_ns.exchange(0));
     out[0] = n ? scene / n / 1e6 : 0;
@@ -5295,4 +5563,6 @@ extern "C" void hpcos_GpuStats(double out[4], uint32_t frames) {
     double f = frames ? double(frames) : 1;
     out[2] = double(gpu::g_feedback_copies.exchange(0)) / f;
     out[3] = double(gpu::g_feedback_px.exchange(0)) / f / 1e6;
+    out[4] = double(gpu::g_upload_bytes.exchange(0)) / f / 1048576.0;
+    out[5] = double(gpu::g_ring_waits.exchange(0)) / f;
 }
