@@ -37,6 +37,9 @@ INSTALLING
    folder named "game" in the same folder as the executables. A disc image
    is unpacked into the game folder the first time you start the launcher;
    the image is left as it is and can be deleted afterwards.
+   The launcher then checks every game file against the disc's once (a few
+   seconds, longer on a hard drive) and names any that are damaged or
+   missing; "Verify game files" on its page checks them again.
 
 The port creates these itself on the first run:
     hpcos.toml     your settings (the launcher and F10 change them)
@@ -123,6 +126,16 @@ Graphics
     Draw everything in view
                          objects at the screen's edges and behind doorways
                          stay drawn (the Xbox left some out); on by default
+  Post-processing
+    Bloom, Bloom strength  a glow around bright parts of the 3D scene (not
+                         the HUD)
+    Sharpening           contrast-adaptive sharpening, off by default
+    Saturation, Vibrance, Warmth
+                         colour grading; 100 %, off and "as the game" leave
+                         the colours alone
+    Vignette, Film grain darkened corners and film grain, off by default
+    Field of view (experimental)
+                         80 to 130 % of the game's; 100 is the game's own
 
 Audio
   Speakers               Stereo, or 5.1 surround: the console's own speaker
@@ -155,6 +168,21 @@ Accessibility
                          colours you confuse toward ones you can tell apart
     Strength %
 
+Enhancements
+  Hogwarts grounds
+    Explore Hogwarts Grounds (experimental)
+                         walk the whole grounds without the paths' fades to
+                         their other end; every area is shown and the
+                         destination names are hidden. The story's cutscenes
+                         and lessons still play; flying practice can only be
+                         repeated by turning this off. At night the flying
+                         practice arch takes Harry to the field and its exit
+                         brings him back, and the broom is unavailable.
+  Broom
+    Land the broom on any flat surface (experimental)
+                         land over a flat roof or a wall's top as in a
+                         landing zone (not on the lake)
+
 Debug
   Logs                   "Open logs folder" shows logs\runs; "Mark this
                          moment in the log" notes the time, so a problem can
@@ -168,6 +196,12 @@ Debug
 
 TROUBLESHOOTING
 ---------------
+
+The launcher says game files are damaged or missing
+    Copy those files again from your disc or game dump, or put the disc
+    image (.iso / .xiso) in the game folder and press "Repair" on the
+    launcher's page. A damaged file can crash the game or lose sound or
+    pictures where it is used.
 
 "Failed to load default.xbe"
     The game files are missing: check that game\default.xbe exists beside

@@ -19,7 +19,7 @@ objdump=x86_64-w64-mingw32-objdump
 nm=x86_64-w64-mingw32-nm
 mkdir -p logs
 cmake -S . -B build-release "${cross[@]}" -DCMAKE_BUILD_TYPE=Release -DHPCOS_RELEASE=ON \
-      -DHPCOS_VERSION="${VERSION:-0.1.0}" > logs/build-release-config.log
+      -DHPCOS_VERSION="${VERSION:-0.2.0}" > logs/build-release-config.log
 nice -n 10 cmake --build build-release -j"$(nproc)" --target hpcos hpcos_launcher > logs/build-release.log 2>&1 ||
     { tail -30 logs/build-release.log; exit 1; }
 
@@ -40,6 +40,8 @@ cp -f "$toolkit/NOTICE" "$dist/licenses/xboxrecomp-NOTICE.txt"
 cp -f "$toolkit/LICENSES/LGPL-2.1.txt" "$dist/licenses/LGPL-2.1.txt"
 cp -f src/renderer/LICENSE "$dist/licenses/renderer-MIT.txt"
 cp -f third_party/imgui/LICENSE.txt "$dist/licenses/DearImGui.txt"
+# the launcher title's font, Magic School One (FontMesa): its own terms, from its download
+cp -f src/launcher/font/MagicSchool-licensing.txt "$dist/licenses/MagicSchool-font.txt"
 
 # res/base_shaders.bin and res/base_pipelines.bin, from a play-through on Windows (its shadercache\shaders.bin and
 # pipelines_list.bin): a player's first visit to an area then needs no shader compiler and its pipelines are made

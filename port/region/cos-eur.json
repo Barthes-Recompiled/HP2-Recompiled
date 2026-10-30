@@ -701,6 +701,20 @@
  ],
  "explicit": [
   {
+   "from": "0x000E69DE",
+   "to": "0x000E6C45",
+   "kind": "label",
+   "confidence": "high",
+   "why": "sub_000E6860's epilogue (pop edi; pop esi; add esp, 0x10; ret), the warp-zone test's je target in tools/patch_gen.py; the EUR function is 7 bytes longer before it, so the segment delta (0xE6C3E) lands mid-function"
+  },
+  {
+   "from": "0x000E65F0",
+   "to": "0x000E6820",
+   "kind": "function",
+   "confidence": "high",
+   "why": "the first flying lesson's warp handler (hle_trainer.c, v0.2.0 grounds exploring): the warp table slot 0x20AC3C maps to 0x20AF8C, which holds 0xE6820; the code matches apart from rel32 call offsets"
+  },
+  {
    "from": "0x000B5950",
    "to": "0x000B5B20",
    "kind": "function",

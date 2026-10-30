@@ -4,6 +4,8 @@
  "skip": ["src/recomp/gen/*", "src/recomp/region/*"],
  "include_dirs": ["src", "src/recomp", "src/renderer"],
  "numbers": [
+  {"values": ["0x100000"], "files": ["src/hle_trainer.c"], "why": "an object description's flag word (+0x44) bit: hidden/no collision (v0.2.0 grounds exploring)"},
+  {"values": ["0x00011000"], "files": ["src/main.c"], "why": "the canonical XBE's .text address in upstream's edition check, compared as a number (compiled out of retargeted builds)"},
   {"values": ["0x20000"], "files": ["src/hle_debug.c"], "why": "a physics body's hit flag (body + 0x20)"},
   {"values": ["0x180000"], "files": ["src/hle_debug.c"],
    "why": "loose upper bound for return addresses in a stack walk; the code of both regions ends below it"},
