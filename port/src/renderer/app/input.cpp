@@ -338,3 +338,115 @@ extern "C" void app_InputRumble(uint16_t* left, uint16_t* right) {
     *left = uint16_t(*left * k / 100);
     *right = uint16_t(*right * k / 100);
 }
+
+// xboxrecomp: the in-game Button mapping page (hle_frontend.c). The page asks for one game button's pad button: the
+// next pad button pressed and let go is the answer; holding B a second, Escape, or ten seconds with nothing pressed
+// cancel. hle_input.c hands every port-0 read here as the pad gave it (before the remapping, the trainer's input on
+// top); while the page waits, and until everything is let go after it, the game sees the pad at rest.
+namespace app {
+namespace {
+enum class Cap { kIdle, kArming, kWaiting, kDraining };
+Cap g_cap = Cap::kIdle;
+int g_cap_held = -1;           // the pad button down while waiting, -1 none
+int g_cap_result = 0;          // 0 waiting, 1 a button (g_cap_button), -1 cancelled
+int g_cap_button = 0;
+ULONGLONG g_cap_since = 0, g_cap_b_since = 0;
+}  // namespace
+}  // namespace app
+
+extern "C" void app_PadCaptureStart(void) {
+    app::g_cap = app::Cap::kArming;  // the A that chose the row is let go first
+    app::g_cap_held = -1;
+    app::g_cap_result = 0;
+    app::g_cap_since = GetTickCount64();
+    app::g_cap_b_since = 0;
+    std::fprintf(stderr, "[REBIND] waiting for a pad button\n");
+}
+
+// 0 still waiting, 1 *button is the answer, -1 cancelled; the wait is over after a non-zero answer
+extern "C" int app_PadCaptureResult(int* button) {
+    if (app::g_cap_result > 0) *button = app::g_cap_button;
+    int r = app::g_cap_result;
+    if (r) app::g_cap_result = 0;
+    return r;
+}
+
+// hle_input.c: port 0's pad as the PC's controller (and the trainer) gave it; non-zero: the game must see it at rest
+extern "C" int app_PadCaptureFeed(const XBOX_GAMEPAD* g) {
+    using app::Cap;
+    if (app::g_cap == Cap::kIdle) return 0;
+    uint8_t v[app::kPadInputs];
+    app::Read(*g, v);
+    int down = -1;
+    for (int i = 0; i < int(app::kPadInputs); i++)
+        if (v[i] > 128) {
+            down = i;
+            break;
+        }
+    bool esc = app::Held(VK_ESCAPE);
+    ULONGLONG now = GetTickCount64();
+    switch (app::g_cap) {
+        case Cap::kArming:
+            if (down < 0 && !esc) app::g_cap = Cap::kWaiting;
+            break;
+        case Cap::kWaiting: {
+            bool cancel = esc || (app::g_cap_held < 0 && now - app::g_cap_since > 10000);
+            if (app::g_cap_held == 1 && v[1] > 128) {
+                if (!app::g_cap_b_since) app::g_cap_b_since = now;
+                if (now - app::g_cap_b_since >= 1000) cancel = true;
+            }
+            if (cancel) {
+                std::fprintf(stderr, "[REBIND] cancelled\n");
+                app::g_cap_result = -1;
+                app::g_cap = Cap::kDraining;
+            } else if (app::g_cap_held < 0) {
+                if (down >= 0) app::g_cap_held = down, app::g_cap_b_since = 0;
+            } else if (v[app::g_cap_held] <= 128) {  // let go: the answer
+                std::fprintf(stderr, "[REBIND] got %s\n", app::kPadInputNames[app::g_cap_held]);
+                app::g_cap_button = app::g_cap_held;
+                app::g_cap_result = 1;
+                app::g_cap = Cap::kDraining;
+            }
+            break;
+        }
+        case Cap::kDraining:
+            if (down < 0 && !esc) app::g_cap = Cap::kIdle;
+            break;
+        default:
+            break;
+    }
+    return 1;
+}
+
+// the page's names for the pad's inputs (kPadInputNames order; a 360 / One pad's LB is White, RB Black)
+extern "C" const char* app_PadInputLabel(int i) {
+    static const char* const kLabel[app::kPadInputs] = {
+        "A", "B", "X", "Y", "RB (Black)", "LB (White)", "LT", "RT", "D-pad Up", "D-pad Down", "D-pad Left",
+        "D-pad Right", "Start", "Back", "Left stick click", "Right stick click"};
+    return i >= 0 && i < int(app::kPadInputs) ? kLabel[i] : "?";
+}
+extern "C" int app_PadInputCount(void) { return int(app::kPadInputs); }
+// the pad button game button `game` reads
+extern "C" int app_PadMapGet(int game) {
+    if (game < 0 || game >= int(app::kPadInputs)) return 0;
+    return int(std::min(app::Get().pad_map[game], app::kPadInputs - 1));
+}
+// game button `game` reads pad button `button`; with swap, the game button that read it takes `game`'s old one
+extern "C" void app_PadMapSet(int game, int button, int swap) {
+    if (game < 0 || game >= int(app::kPadInputs) || button < 0 || button >= int(app::kPadInputs)) return;
+    app::Settings& s = app::Get();
+    uint32_t old = std::min(s.pad_map[game], app::kPadInputs - 1);
+    if (swap)
+        for (uint32_t j = 0; j < app::kPadInputs; j++)
+            if (int(j) != game && std::min(s.pad_map[j], app::kPadInputs - 1) == uint32_t(button)) s.pad_map[j] = old;
+    s.pad_map[game] = uint32_t(button);
+    std::fprintf(stderr, "[REBIND] %s reads %s%s\n", app::kPadInputNames[game], app::kPadInputNames[button],
+                 swap ? " (swapped)" : "");
+    app::Save();
+}
+extern "C" void app_PadMapReset(void) {
+    app::Settings& s = app::Get();
+    for (uint32_t i = 0; i < app::kPadInputs; i++) s.pad_map[i] = i;
+    std::fprintf(stderr, "[REBIND] defaults\n");
+    app::Save();
+}

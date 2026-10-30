@@ -18,6 +18,7 @@
 #include <fstream>
 #include <sstream>
 #include <string>
+#include <vector>
 
 #include "core/log.h"
 
@@ -500,3 +501,149 @@ extern "C" void hpcos_SettingsInit(void) {
 }
 
 // hle_video.c: the gameplay cameras' field of view
+
+// xboxrecomp: the in-game settings pages (hle_frontend.c draws them in the game's own menus): Gameplay, Graphics and
+// Controls, the same settings the F10 panel changes, stepped left / right and saved to hpcos.toml as F10 does
+namespace {
+struct InGameOption {
+    const char* label;
+    bool app::Settings::*flag = nullptr;      // a toggle, or
+    uint32_t app::Settings::*value = nullptr; // a number: a list of choices, or a range
+    const uint32_t* choices = nullptr;
+    const char* const* names = nullptr;
+    int count = 0;
+    int lo = 0, hi = 0, step = 0;            // a range (choices null)
+    const char* unit = "";
+    int special = 0;                          // 1 display mode, 2 resolution, 3 aspect
+};
+constexpr uint32_t kMsaa[] = {0, 2, 4, 8};
+const char* const kMsaaNames[] = {"Off", "2x", "4x", "8x"};
+constexpr uint32_t kAniso[] = {0, 2, 4, 8, 16};
+const char* const kAnisoNames[] = {"Game's", "2x", "4x", "8x", "16x"};
+const char* const kDisplayNames[] = {"Windowed", "Borderless", "Fullscreen"};
+const char* const kAspectNames[] = {"4:3", "16:9", "Stretch"};
+const char* const kMoveNames[] = {"Slow walk", "Walk", "Run"};
+constexpr uint32_t kMove[] = {0, 1, 2};
+
+const InGameOption kGameplay[] = {
+    {"Cutscene fast-forward", &app::Settings::cutscene_skip},
+    {"Skip start-up logos", &app::Settings::intro_skip},
+    {"Broom lands anywhere flat", &app::Settings::broom_land_flat},
+};
+const InGameOption kGraphics[] = {
+    {"Display", nullptr, nullptr, nullptr, kDisplayNames, 3, 0, 0, 0, "", 1},
+    {"Resolution", nullptr, nullptr, nullptr, nullptr, 0, 0, 0, 0, "", 2},
+    {"Render scale", nullptr, &app::Settings::render_percent, nullptr, nullptr, 0, 20, 200, 10, "%"},
+    {"Vsync", &app::Settings::vsync},
+    {"Aspect (next start)", nullptr, nullptr, nullptr, kAspectNames, 3, 0, 0, 0, "", 3},
+    {"Field of view", nullptr, &app::Settings::fov, nullptr, nullptr, 0, 80, 130, 5, "%"},
+    {"MSAA", nullptr, &app::Settings::msaa, kMsaa, kMsaaNames, 4},
+    {"SMAA", &app::Settings::smaa},
+    {"Anisotropic filtering", nullptr, &app::Settings::aniso, kAniso, kAnisoNames, 5},
+    {"Brightness", nullptr, &app::Settings::brightness, nullptr, nullptr, 0, 0, 100, 5},
+    {"Bloom", &app::Settings::bloom},
+    {"Sharpen", nullptr, &app::Settings::sharpen, nullptr, nullptr, 0, 0, 100, 10},
+    {"FPS counter", &app::Settings::fps_counter},
+};
+const InGameOption kControls[] = {
+    {"Vibration", &app::Settings::vibration},
+    {"Vibration strength", nullptr, &app::Settings::vibration_strength, nullptr, nullptr, 0, 0, 100, 10, "%"},
+    {"Invert camera X", &app::Settings::invert_x},
+    {"Invert camera Y", &app::Settings::invert_y},
+    {"Left stick deadzone", nullptr, &app::Settings::deadzone_left, nullptr, nullptr, 0, 0, 50, 5, "%"},
+    {"Right stick deadzone", nullptr, &app::Settings::deadzone_right, nullptr, nullptr, 0, 0, 50, 5, "%"},
+    {"Camera speed", nullptr, &app::Settings::sensitivity_right, nullptr, nullptr, 0, 25, 200, 25, "%"},
+    {"Keyboard and mouse", &app::Settings::kbm},
+    {"Mouse sensitivity", nullptr, &app::Settings::mouse_sensitivity, nullptr, nullptr, 0, 5, 100, 5},
+    {"Invert mouse Y", &app::Settings::mouse_invert_y},
+    {"Movement keys pace", nullptr, &app::Settings::move_mode, kMove, kMoveNames, 3},
+    {"Use controller", &app::Settings::controller},
+};
+struct PageDef { const InGameOption* opts; int n; };
+const PageDef kPages[] = {{kGameplay, int(std::size(kGameplay))}, {kGraphics, int(std::size(kGraphics))},
+                          {kControls, int(std::size(kControls))}};
+
+// the monitor's own sizes, biggest first (the launcher's list): 0x0 "Desktop" first
+std::vector<std::pair<uint32_t, uint32_t>>& Modes() {
+    static std::vector<std::pair<uint32_t, uint32_t>> m;
+    if (m.empty()) {
+        m.emplace_back(0, 0);
+        DEVMODEW dm{};
+        dm.dmSize = sizeof dm;
+        for (DWORD i = 0; EnumDisplaySettingsW(nullptr, i, &dm); i++) {
+            if (dm.dmPelsWidth < 640) continue;
+            std::pair<uint32_t, uint32_t> p(dm.dmPelsWidth, dm.dmPelsHeight);
+            if (std::find(m.begin(), m.end(), p) == m.end()) m.push_back(p);
+        }
+        std::sort(m.begin() + 1, m.end(), [](auto a, auto b) { return a.first * a.second > b.first * b.second; });
+    }
+    return m;
+}
+
+const InGameOption* Opt(int page, int i) {
+    if (page < 0 || page >= int(std::size(kPages)) || i < 0 || i >= kPages[page].n) return nullptr;
+    return &kPages[page].opts[i];
+}
+}  // namespace
+
+extern "C" int app_PageOptionCount(int page) {
+    return page >= 0 && page < int(std::size(kPages)) ? kPages[page].n : 0;
+}
+extern "C" const char* app_PageOptionLabel(int page, int i) {
+    const InGameOption* o = Opt(page, i);
+    return o ? o->label : "";
+}
+extern "C" const char* app_PageOptionValue(int page, int i) {
+    static char buf[48];
+    const InGameOption* o = Opt(page, i);
+    if (!o) return "";
+    const app::Settings& s = app::Get();
+    if (o->special == 1) return kDisplayNames[std::min<uint32_t>(uint32_t(s.display_mode), 2)];
+    if (o->special == 3) return kAspectNames[std::min<uint32_t>(uint32_t(s.aspect), 2)];
+    if (o->special == 2) {
+        if (!s.width || !s.height) return "Desktop";
+        std::snprintf(buf, sizeof buf, "%u x %u", unsigned(s.width), unsigned(s.height));
+        return buf;
+    }
+    if (o->flag) return s.*(o->flag) ? "On" : "Off";
+    uint32_t v = s.*(o->value);
+    if (o->choices) {
+        for (int k = 0; k < o->count; k++)
+            if (o->choices[k] == v) return o->names[k];
+        return o->names[0];
+    }
+    std::snprintf(buf, sizeof buf, "%u%s", unsigned(v), o->unit);
+    return buf;
+}
+extern "C" void app_PageOptionStep(int page, int i, int dir) {
+    const InGameOption* o = Opt(page, i);
+    if (!o || !dir) return;
+    app::Settings& s = app::Get();
+    bool display = false;
+    if (o->special == 1) {
+        s.display_mode = app::DisplayMode((uint32_t(s.display_mode) + 3 + uint32_t(dir)) % 3);
+        display = true;
+    } else if (o->special == 3) {
+        s.aspect = app::AspectMode((uint32_t(s.aspect) + 3 + uint32_t(dir)) % 3);
+    } else if (o->special == 2) {
+        auto& m = Modes();
+        int c = 0;
+        for (int k = 0; k < int(m.size()); k++)
+            if (m[size_t(k)].first == s.width && m[size_t(k)].second == s.height) c = k;
+        c = (c + dir + int(m.size())) % int(m.size());
+        s.width = m[size_t(c)].first, s.height = m[size_t(c)].second;
+        display = true;
+    } else if (o->flag) {
+        s.*(o->flag) = !(s.*(o->flag));
+    } else if (o->choices) {
+        int c = 0;
+        for (int k = 0; k < o->count; k++)
+            if (o->choices[k] == s.*(o->value)) c = k;
+        s.*(o->value) = o->choices[(c + dir + o->count) % o->count];
+    } else {
+        int v = int(s.*(o->value)) + o->step * dir;
+        s.*(o->value) = uint32_t(v < o->lo ? o->lo : v > o->hi ? o->hi : v);
+    }
+    app::Save();
+    if (display) app::ApplyDisplay();
+}
