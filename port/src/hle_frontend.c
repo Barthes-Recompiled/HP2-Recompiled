@@ -61,6 +61,7 @@ extern void sub_0001B900(void);
 extern void sub_0004E490(void);
 extern void sub_00032FD0(void);
 extern void sub_000330F0(void);
+extern void sub_000331A0(void);
 extern void sub_00033150(void);
 extern void sub_00033390(void);
 extern void sub_000333A0(void);
@@ -292,6 +293,7 @@ static int title_game_rows(void) { return (MEM8(kFlags) & kHasSave) ? 3 : 2; }
 #define PAGE_NAME_Y 62
 #define PAGE_ROW_Y 112
 #define PAGE_STEP 28
+#define PAGE_COL_GAP 10
 
 typedef struct { char text[96]; int enabled; } PageRow;
 
@@ -492,6 +494,33 @@ static void fill(uint32_t x0, uint32_t y0, uint32_t x1, uint32_t y1, uint32_t co
     call_guest(sub_0001B900, 0, 5, a);
 }
 
+/* a text's width at the font's scale (sub_000331A0: the width the text draw centres by) */
+static int32_t text_width(uint32_t font, uint32_t text)
+{
+    uint32_t a[3] = {text, 0xFFFFFFFFu, 1};
+    return (int32_t)call_guest(sub_000331A0, font, 3, a);
+}
+
+/* a page row: "label   value" (page_rows) as two columns about the centre, the label ending and the value starting
+ * PAGE_COL_GAP from it, so the values line up down the page; a row without a value centred. The text draw centres on
+ * x, so a column's edge is x less or more half the width. */
+static void draw_row(uint32_t font, uint32_t colour, uint32_t y, const char *s, uint32_t *va, uint32_t *val_va)
+{
+    const char *sep = strstr(s, "   ");
+    if (!sep) {
+        draw_text(font, colour, y, guest_line(s, va));
+        return;
+    }
+    char label[96];
+    size_t n = (size_t)(sep - s) < sizeof label - 1 ? (size_t)(sep - s) : sizeof label - 1;
+    memcpy(label, s, n);
+    label[n] = 0;
+    uint32_t l = guest_line(label, va), v = guest_line(sep + 3, val_va);
+    if (!l || !v) return;
+    draw_text_at(font, colour, (uint32_t)(kRowX - PAGE_COL_GAP - text_width(font, l) / 2), y, l);
+    draw_text_at(font, colour, (uint32_t)(kRowX + PAGE_COL_GAP + text_width(font, v) / 2), y, v);
+}
+
 static void page_draw(void)
 {
     uint32_t font = kPauseFont, name_font = g_pg.where == 1 ? kFont : kPauseFont;  /* kFont has no digits */
@@ -507,24 +536,25 @@ static void page_draw(void)
     font_setup(font, 0.85f);
     int shown = n < PAGE_ROWS_SHOWN ? n : PAGE_ROWS_SHOWN;
     uint32_t row0 = PAGE_ROW_Y + PAGE_STEP * (uint32_t)(PAGE_ROWS_SHOWN - shown) / 2;
-    static uint32_t row_va[PAGE_ROWS_SHOWN];
+    static uint32_t row_va[PAGE_ROWS_SHOWN], val_va[PAGE_ROWS_SHOWN];
     for (int r = 0; r < shown && g_pg.top + r < n; r++) {
         int i = g_pg.top + r;
         uint32_t col = !rows[i].enabled ? kDim : i == g_pg.sel ? lit_colour() : kGold;
-        draw_text(font, col, row0 + PAGE_STEP * (uint32_t)r, guest_line(rows[i].text, &row_va[r]));
+        draw_row(font, col, row0 + PAGE_STEP * (uint32_t)r, rows[i].text, &row_va[r], &val_va[r]);
     }
     static uint32_t more_va;
     if (g_pg.top > 0) draw_text(font, kGold, row0 - 18, guest_text("...", &more_va));
     if (g_pg.top + PAGE_ROWS_SHOWN < n)
         draw_text(font, kGold, row0 + PAGE_STEP * (uint32_t)shown - 8, guest_text("...", &more_va));
     font_setup(font, 0.75f);
-    if (g_pg.page == kPageButtons && g_pg.map_mode == kMapWait) {
-        static uint32_t wait_va;
-        draw_text(font, kYellow, PAGE_Y1 - 52,
+    /* waiting for a pad button the question takes the hint's place (Select and Back do not apply meanwhile), clear of
+     * the rows and their "..." */
+    static uint32_t hint_va, wait_va;
+    if (g_pg.page == kPageButtons && g_pg.map_mode == kMapWait)
+        draw_text(font, kYellow, PAGE_Y1 - 30,
                   guest_text("Press a button for it. Hold B or press Esc to cancel", &wait_va));
-    }
-    static uint32_t hint_va;
-    draw_text(font, kLit, PAGE_Y1 - 30, guest_text("A  Select      B  Back", &hint_va));
+    else
+        draw_text(font, kLit, PAGE_Y1 - 30, guest_text("A  Select      B  Back", &hint_va));
     /* the port everything here stands on */
     static uint32_t thanks_va;
     font_setup(font, 0.5f);
