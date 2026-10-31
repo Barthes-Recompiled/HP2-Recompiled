@@ -15,8 +15,7 @@ port="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$port"
 # cross from Linux with the toolkit's toolchain file, or native on Windows (MSYS2 UCRT64 shell: gcc, objdump, nm)
 if command -v x86_64-w64-mingw32-objdump > /dev/null; then
-    toolkit="${XBOXRECOMP_DIR:-$port/../xboxrecomp}"
-    cross=(-DCMAKE_TOOLCHAIN_FILE="$toolkit/cmake/mingw-w64-x86_64.cmake")
+    cross=(-DCMAKE_TOOLCHAIN_FILE="${XBOXRECOMP_DIR:-$port/../xboxrecomp}/cmake/mingw-w64-x86_64.cmake")
     objdump=x86_64-w64-mingw32-objdump
     nm=x86_64-w64-mingw32-nm
 else
@@ -42,9 +41,17 @@ cp -f CHANGES.md "$dist/CHANGES.txt"
 # source), and the MIT code built in: the renderer and Dear ImGui
 cp -f LICENSE "$dist/licenses/LICENSE.txt"
 cp -f NOTICE "$dist/licenses/NOTICE.txt"
-cp -f "$toolkit/LICENSE" "$dist/licenses/xboxrecomp-MIT.txt"
-cp -f "$toolkit/NOTICE" "$dist/licenses/xboxrecomp-NOTICE.txt"
-cp -f "$toolkit/LICENSES/LGPL-2.1.txt" "$dist/licenses/LGPL-2.1.txt"
+# the toolkit beside the repo (upstream's layout), or in the repo itself (its root holds the toolkit and its licences)
+toolkit="${XBOXRECOMP_DIR:-$port/../xboxrecomp}"
+if [ -d "$toolkit" ]; then
+    cp -f "$toolkit/LICENSE" "$dist/licenses/xboxrecomp-MIT.txt"
+    cp -f "$toolkit/NOTICE" "$dist/licenses/xboxrecomp-NOTICE.txt"
+    cp -f "$toolkit/LICENSES/LGPL-2.1.txt" "$dist/licenses/LGPL-2.1.txt"
+else
+    cp -f "$port/../LICENSES/xboxrecomp-MIT.txt" "$dist/licenses/xboxrecomp-MIT.txt"
+    cp -f "$port/../NOTICE" "$dist/licenses/xboxrecomp-NOTICE.txt"
+    cp -f "$port/../LICENSES/LGPL-2.1.txt" "$dist/licenses/LGPL-2.1.txt"
+fi
 cp -f src/renderer/LICENSE "$dist/licenses/renderer-MIT.txt"
 cp -f third_party/imgui/LICENSE.txt "$dist/licenses/DearImGui.txt"
 # the launcher title's font, Magic School One (FontMesa): its own terms, from its download
