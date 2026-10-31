@@ -13,14 +13,21 @@
 set -euo pipefail
 port="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$port"
-toolkit="${XBOXRECOMP_DIR:-$port/../xboxrecomp}"
-cross=(-DCMAKE_TOOLCHAIN_FILE="$toolkit/cmake/mingw-w64-x86_64.cmake")
-objdump=x86_64-w64-mingw32-objdump
-nm=x86_64-w64-mingw32-nm
+# cross from Linux with the toolkit's toolchain file, or native on Windows (MSYS2 UCRT64 shell: gcc, objdump, nm)
+if command -v x86_64-w64-mingw32-objdump > /dev/null; then
+    toolkit="${XBOXRECOMP_DIR:-$port/../xboxrecomp}"
+    cross=(-DCMAKE_TOOLCHAIN_FILE="$toolkit/cmake/mingw-w64-x86_64.cmake")
+    objdump=x86_64-w64-mingw32-objdump
+    nm=x86_64-w64-mingw32-nm
+else
+    cross=(-G Ninja)
+    objdump=objdump
+    nm=nm
+fi
 mkdir -p logs
 cmake -S . -B build-release "${cross[@]}" -DCMAKE_BUILD_TYPE=Release -DHPCOS_RELEASE=ON \
       -DHPCOS_VERSION="${VERSION:-0.2.0}" > logs/build-release-config.log
-nice -n 10 cmake --build build-release -j"$(nproc)" --target hpcos hpcos_launcher > logs/build-release.log 2>&1 ||
+nice -n 10 cmake --build build-release -j4 --target hpcos hpcos_launcher > logs/build-release.log 2>&1 ||
     { tail -30 logs/build-release.log; exit 1; }
 
 dist="$port/dist/hpcos-$(date +%Y%m%d)"
