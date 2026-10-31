@@ -9,7 +9,7 @@
   {"values": ["0x20000"], "files": ["src/hle_debug.c"], "why": "a physics body's hit flag (body + 0x20)"},
   {"values": ["0x180000"], "files": ["src/hle_debug.c"],
    "why": "loose upper bound for return addresses in a stack walk; the code of both regions ends below it"},
-  {"values": ["0x100000", "0x200000", "0x40400", "0x40000", "0x80800"], "files": ["src/hle_frontend.c"],
+  {"values": ["0x100000", "0x200000", "0x40400", "0x40000", "0x80800", "0x400000", "0x800000"], "files": ["src/hle_frontend.c"],
    "why": "menu input button bits"},
   {"values": ["0x1D0000", "0x500000", "0x50000", "0x60000"], "files": ["src/hle_trainer.c"],
    "why": "rough windows of game data the trainer's [HDIFF-G] snapshot compares, and their sizes"},
