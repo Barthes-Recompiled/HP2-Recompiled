@@ -172,6 +172,13 @@ static uint32_t pressed(void)
     return p & ~MEM32(kLockout);
 }
 
+/* a character of the port's text as the game's: bytes 1..8 are its button sprites, the font's 0x1701.. (the
+ * renderer, 0x339A6, draws 0x17xx untinted), as its own hints "\x01 Select" (text 0x1060) and "\x03 Exit" (0x105F) */
+static uint16_t guest_char(char c)
+{
+    return c > 0 && c < 9 ? (uint16_t)(0x1700 + c) : (uint8_t)c;
+}
+
 /* a UTF-16 string in guest memory, as the title's text tables hold them */
 static uint32_t guest_text(const char *s, uint32_t *va)
 {
@@ -180,7 +187,7 @@ static uint32_t guest_text(const char *s, uint32_t *va)
         while (s[n]) n++;
         *va = xbox_HeapAlloc((n + 1) * 2, 16);
         if (!*va) return 0;
-        for (unsigned i = 0; i <= n; i++) MEM16(*va + 2 * i) = (uint8_t)s[i];
+        for (unsigned i = 0; i <= n; i++) MEM16(*va + 2 * i) = guest_char(s[i]);
     }
     return *va;
 }
@@ -191,7 +198,7 @@ static uint32_t guest_line(const char *s, uint32_t *va)
     if (!*va) *va = xbox_HeapAlloc(2 * 100, 16);
     if (!*va) return 0;
     unsigned i = 0;
-    for (; s[i] && i < 99; i++) MEM16(*va + 2 * i) = (uint8_t)s[i];
+    for (; s[i] && i < 99; i++) MEM16(*va + 2 * i) = guest_char(s[i]);
     MEM16(*va + 2 * i) = 0;
     return *va;
 }
@@ -548,13 +555,13 @@ static void page_draw(void)
         draw_text(font, kGold, row0 + PAGE_STEP * (uint32_t)shown - 8, guest_text("...", &more_va));
     font_setup(font, 0.75f);
     /* waiting for a pad button the question takes the hint's place (Select and Back do not apply meanwhile), clear of
-     * the rows and their "..." */
+     * the rows and their "..."; the hint shows the game's own A and B button sprites */
     static uint32_t hint_va, wait_va;
     if (g_pg.page == kPageButtons && g_pg.map_mode == kMapWait)
         draw_text(font, kYellow, PAGE_Y1 - 30,
-                  guest_text("Press a button for it. Hold B or press Esc to cancel", &wait_va));
+                  guest_text("Press a button for it. Hold \x03 or press Esc to cancel", &wait_va));
     else
-        draw_text(font, kLit, PAGE_Y1 - 30, guest_text("A  Select      B  Back", &hint_va));
+        draw_text(font, kLit, PAGE_Y1 - 30, guest_text("\x01 Select      \x03 Back", &hint_va));
     /* the port everything here stands on */
     static uint32_t thanks_va;
     font_setup(font, 0.5f);
