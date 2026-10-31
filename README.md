@@ -26,9 +26,16 @@ the other.
 
 ## Playing
 
-Download the latest release, put your disc's files or the .xiso in a `game` folder beside the executables and
-start `hpcos_launcher.exe`. Requirements, controls and every option are in [port/README.txt](port/README.txt);
-what changed in each release is in [port/CHANGES.md](port/CHANGES.md).
+The easiest way is the **[Barthes Launcher](https://github.com/Barthes-Recompiled/Barthes-Launcher/releases/latest)**,
+one launcher for all three Barthes Recompiled Harry Potter ports: it installs the port, unpacks and checks your disc,
+picks the build for your disc's edition and keeps it up to date.
+
+To set it up by hand, download the [latest release](https://github.com/Barthes-Recompiled/HP2-Recompiled/releases/latest)
+for your disc (`USA` for the North American disc, `PAL` for the European one), put your disc's files or the .iso in a
+`game` folder beside the executables and start `hpcos_launcher.exe`. Requirements, controls and every option are in
+[port/README.txt](port/README.txt); what changed in each release is in [port/CHANGES.md](port/CHANGES.md).
+
+Archipelago multiworld randomizer support is coming soon.
 
 ## Building
 
@@ -42,7 +49,8 @@ the recompilation, the renderer work, the launcher, and every fix and option in
 [HP-COS-Xbox-Recomp](https://github.com/MiddleDucky/HP-COS-Xbox-Recomp). Everything here is built on that work,
 and each upstream release (v0.2.0 most recently, with its open Hogwarts grounds and broom landing) is merged in
 with gratitude. Thank you, MiddleDucky, for bringing this game to the PC and for sharing it so generously. The fork
-only adds a few things on top (the PAL disc, cutscene and logo skips, Archipelago work in progress).
+only adds a few things on top (the PAL disc, settings pages inside the game, cutscene and logo skips, and soon
+Archipelago).
 
 ## Credits and licences
 

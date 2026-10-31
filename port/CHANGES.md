@@ -1,5 +1,32 @@
 # Changes
 
+## 1.0.0 (2026-10-31): Barthes Recompiled, built on MiddleDucky's v0.2.0
+
+This is the first Barthes Recompiled release of the port. Everything that makes the game run on the PC is
+**MiddleDucky's** work ([HP-COS-Xbox-Recomp](https://github.com/MiddleDucky/HP-COS-Xbox-Recomp)), and this release
+carries all of their v0.2.0 below, open Hogwarts grounds and broom landing included. Thank you, MiddleDucky, so very
+much, for bringing this game to the PC and for sharing it so generously.
+
+### New
+- **Settings inside the game.** "Settings" in the title menu and the pause menu opens Gameplay, Graphics and Controls
+  pages drawn in the game's own font, with the game's own A and B button gems in the hint. They change the same
+  settings as F10 and save to `hpcos.toml`.
+- **Button Mapping** (Settings > Controls): press the action, then the controller button for it.
+- **Both discs.** The European (PAL) disc now works as well as the North American one. Each disc has its own
+  download; the Barthes Launcher picks the right one for your disc. (The note under v0.2.0 that only the NTSC-U
+  release works is about that version.)
+- **Cutscene fast-forward:** hold Start or Back to run a cutscene to its end quickly (on by default).
+- **Start-up logos skipped** (on by default; F10 > Gameplay or Settings > Gameplay to turn it off).
+- **Controller in background** (Settings > Controls, F10, launcher): turn it off and the game ignores the controller
+  while another window has the focus.
+
+### Fixes
+- The settings pages fit a 4:3 screen: label and value columns, and the "press a button" prompt in the hint's place.
+
+### Known issues
+- Button prompts are always Xbox's; PlayStation and Switch pads work through Steam Input or DS4Windows.
+- Tom Riddle's eyes and mouth in the final cutscene, as in v0.2.0.
+
 ## v0.2.0 (2026-10-30), compared with v0.1.0
 
 ### New: Enhancements (F10)
