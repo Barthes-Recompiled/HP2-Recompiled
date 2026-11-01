@@ -5,7 +5,8 @@
 - **The game's Xbox disk images now live beside it**, in `saves\xbox`, instead of a folder shared by every port
   (`%LOCALAPPDATA%\xboxrecomp`). Each port keeps its own, the folder stays portable, and a game started from a
   packaged (MSIX) app no longer quits at boot because it can't open them. Your saves were already beside the game
-  and stay where they are.
+  and stay where they are. The first start after updating copies the game's file cache over from the old folder, so
+  it stays quick; on a brand-new install the first start builds that cache from the disc and can take a little longer.
 
 With thanks, as ever, to MiddleDucky.
 
