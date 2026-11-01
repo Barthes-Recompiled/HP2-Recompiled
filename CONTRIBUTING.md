@@ -130,7 +130,7 @@ Every Xbox game has its own asset formats. If you reverse-engineer a texture for
 ## Testing
 
 The Python side of the toolchain has a test suite. Run it before opening a PR
-(on macOS or Linux, run [setup](#macos-and-linux) once first):
+(on macOS or Linux, run [setup](#macos) once first):
 
 ```
 py -3 -m pytest tools/       # unit tests
