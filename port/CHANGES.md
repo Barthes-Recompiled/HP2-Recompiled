@@ -1,5 +1,14 @@
 # Changes
 
+## 1.0.1 (2026-11-01)
+
+- **The game's Xbox disk images now live beside it**, in `saves\xbox`, instead of a folder shared by every port
+  (`%LOCALAPPDATA%\xboxrecomp`). Each port keeps its own, the folder stays portable, and a game started from a
+  packaged (MSIX) app no longer quits at boot because it can't open them. Your saves were already beside the game
+  and stay where they are.
+
+With thanks, as ever, to MiddleDucky.
+
 ## 1.0.0 (2026-10-31): Barthes Recompiled, built on MiddleDucky's v0.2.0
 
 This is the first Barthes Recompiled release of the port. Everything that makes the game run on the PC is

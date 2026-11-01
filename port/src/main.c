@@ -1150,7 +1150,17 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
     /* Step 4: Set game directory for file I/O path translation */
     {
         extern void xbox_path_init(const char *game_dir, const char *save_dir);
-        xbox_path_init(YOUR_GAME_DIR, NULL);
+        /* the console's disk images (Partition*.img, the system and cache partitions) in <exe dir>\saves\xbox,
+         * beside the game, not the shared %LOCALAPPDATA%\xboxrecomp: each port keeps its own, the folder stays
+         * portable, and a virtualised %LOCALAPPDATA% (a game started from an MSIX app, 2026-10-31: access denied on
+         * Partition0.img, so XAPI quit at boot) can't reach them */
+        char save[MAX_PATH * 3] = "";
+        wchar_t exe[MAX_PATH];
+        DWORD n = GetModuleFileNameW(NULL, exe, MAX_PATH);
+        wchar_t *slash = n && n < MAX_PATH ? wcsrchr(exe, L'\\') : NULL;
+        if (slash && wcscpy_s(slash, MAX_PATH - (size_t)(slash - exe), L"\\saves\\xbox") == 0)
+            WideCharToMultiByte(CP_UTF8, 0, exe, -1, save, (int)sizeof save, NULL, NULL);
+        xbox_path_init(YOUR_GAME_DIR, save[0] ? save : NULL);
     }
 
     /* Step 5: Initialize kernel bridge (thunk table in Xbox memory) */
