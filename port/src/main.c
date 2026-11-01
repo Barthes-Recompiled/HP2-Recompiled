@@ -31,6 +31,8 @@
  */
 
 #include <windows.h>
+#include <shellapi.h>
+#include <shlobj.h>
 #include <dbghelp.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -1160,6 +1162,25 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
         wchar_t *slash = n && n < MAX_PATH ? wcsrchr(exe, L'\\') : NULL;
         if (slash && wcscpy_s(slash, MAX_PATH - (size_t)(slash - exe), L"\\saves\\xbox") == 0)
             WideCharToMultiByte(CP_UTF8, 0, exe, -1, save, (int)sizeof save, NULL, NULL);
+        /* once, for a player coming from a release that kept them in %LOCALAPPDATA%\xboxrecomp: the cache partitions'
+         * files (the game's file cache, built from the disc on a first start, which can take minutes) come along, so
+         * the first start after updating is as quick as before */
+        if (save[0] && GetFileAttributesW(exe) == INVALID_FILE_ATTRIBUTES) {
+            wchar_t old[MAX_PATH + 2] = L"", to[MAX_PATH + 2] = L"";
+            DWORD m = GetEnvironmentVariableW(L"LOCALAPPDATA", old, MAX_PATH);
+            if (m && m < MAX_PATH - 24 && wcscat_s(old, MAX_PATH, L"\\xboxrecomp\\Cache") == 0 &&
+                GetFileAttributesW(old) != INVALID_FILE_ATTRIBUTES && wcscpy_s(to, MAX_PATH, exe) == 0) {
+                SHCreateDirectoryExW(NULL, to, NULL);
+                old[wcslen(old) + 1] = 0;  /* SHFileOperation takes double-NUL-terminated lists */
+                to[wcslen(to) + 1] = 0;
+                SHFILEOPSTRUCTW op = {0};
+                op.wFunc = FO_COPY;
+                op.pFrom = old;
+                op.pTo = to;
+                op.fFlags = FOF_NO_UI;
+                SHFileOperationW(&op);
+            }
+        }
         xbox_path_init(YOUR_GAME_DIR, save[0] ? save : NULL);
     }
 
