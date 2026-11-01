@@ -24,8 +24,6 @@ export RECOMP_PB_EXEC=1 RECOMP_FB_WINDOW=1
 # the register mirror thread rests 250 us between passes instead of spinning a core
 export RECOMP_ACK_SLEEP_US=${RECOMP_ACK_SLEEP_US:-250}
 export RECOMP_USB=1
-# hpcos.exe runs only from the launcher (src/single_instance.h); this script stands in for it
-export HPCOS_LAUNCHER=1
 export WINEDEBUG=${WINEDEBUG:--all}
 # the GPU driver's compiled pipelines, kept per game: Wine's vkd3d has no pipeline library, so Mesa's disk cache is
 # what carries them between runs, and its shared 1 GB default evicted them for other games

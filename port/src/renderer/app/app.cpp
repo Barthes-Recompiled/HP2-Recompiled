@@ -44,10 +44,6 @@ struct Entry {
 
 #define FIELD(m) offsetof(Settings, m)
 const Entry kEntries[] = {
-    // xboxrecomp: first in the file, where a player looks for how to get the launcher's page back
-    {"show_launcher", nullptr, Kind::Bool, FIELD(show_launcher), 0, 0,
-     "the launcher's settings page at startup: true shows it, false starts the game at once (also: hold Shift while "
-     "starting, or F10 > Show the launcher at startup)"},
     {"display_mode", "RECOMP_DISPLAY_MODE", Kind::Display, FIELD(display_mode), 0, 0,
      "'windowed', 'borderless' (covers the monitor) or 'fullscreen' (switches the monitor to width x height)"},
     {"width", nullptr, Kind::U32, FIELD(width), 0, 16384,

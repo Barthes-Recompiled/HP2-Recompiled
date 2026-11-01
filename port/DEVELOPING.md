@@ -25,15 +25,14 @@ off, is in [PORT_CHANGES.md](PORT_CHANGES.md).
                           and the Python pipeline (xbe_parser, disasm, func_id, abi_analysis, recomp)
   cmake/ include/ docs/ tests/ LICENSES/   toolkit
   port/
-    CMakeLists.txt        the game: hpcos.exe, hpcos_launcher.exe, hpcos_trainer.exe
+    CMakeLists.txt        the game: hpcos.exe, hpcos_trainer.exe
     regen.sh              XBE -> port/src/recomp/gen/*.c (generated, ignored by git)
     icall_seeds.json      indirect-call targets the disassembler can't find by itself (regen.sh input)
     src/                  hand-written code
-      main.c              startup: single instance / launcher check, debug.env, settings, XBE load, kernel
+      main.c              startup: single instance, working folder + run log, debug.env, settings, XBE load, kernel
       hle_*.c             overrides of recompiled game/XDK functions
       renderer/           renderer (gpu/d3d12.cpp, shaders.cpp, pipeline_cache.cpp), XDK D3D8 HLE
                           (xdk/hle_d3d8.cpp), settings + F10 panel + input (app/)
-      launcher/           hpcos_launcher.exe (Dear ImGui over D3D11), with the disc image unpacker (xiso.c)
       trainer/            hpcos_trainer.exe, the debug trainer
       recomp/             recomp_types.h etc.; gen/ is generated
     res/                  app.ico; base_shaders.bin and base_pipelines.bin shipped with releases (see 5)
@@ -121,10 +120,11 @@ cmake --build build -j$(nproc)
 ```
 
 On Linux add `-DCMAKE_TOOLCHAIN_FILE=../cmake/mingw-w64-x86_64.cmake` (and leave out `-G Ninja` if Ninja is not
-installed). Outputs in `port/build/`: `hpcos.exe`, `hpcos_launcher.exe`, `hpcos_trainer.exe`.
+installed). Outputs in `port/build/`: `hpcos.exe`, `hpcos_trainer.exe`.
 
-* The exes' icon is the port's own `res/app.ico` (a wand and sparkle drawn from shapes by `tools/make_icon.py`):
-  no game artwork is built in.
+* The exe's icon is Barthes Recompiled's own `res/app.ico` in every build: volume II from the Barthes Launcher's
+  shelf, drawn from shapes by `tools/make_icon.py hp2` (Pillow; the same script is in the launcher's repo). No game
+  art goes into the exe.
 * Generated code is compiled at **-O2** on purpose: GCC 16 at -O3 hoisted the address of a thread-local array
   out of a loop, reading the TLS template instead of the thread's copy. The post-build step
   `tools/check_tls_refs.py` fails the build on any such access.
@@ -135,8 +135,8 @@ installed). Outputs in `port/build/`: `hpcos.exe`, `hpcos_launcher.exe`, `hpcos_
 
 ## 5. Run, test, release
 
-Start `hpcos_launcher.exe` from the build folder with the game files beside it (a `game\` folder), or copy the exes
-next to your `game\` folder. `hpcos.exe` refuses to start without the launcher.
+Start `hpcos.exe` from the build folder with the game files beside it (a `game\` folder), or copy the exe next
+to your `game\` folder (or let the Barthes Launcher start it).
 
 `debug.env` beside the exe sets environment switches at start (one `KEY=VALUE` a line, `#` comments): the
 `RECOMP_*` switches in PORT_CHANGES.md turn individual changes off, and the log tracers on.

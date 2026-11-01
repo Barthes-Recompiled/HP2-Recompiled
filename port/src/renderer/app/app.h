@@ -69,8 +69,7 @@ struct Settings {
     bool controller = true;            // xboxrecomp: false: the PC's controller is read as at rest (keyboard and mouse stay)
     bool background_pad = true;        // xboxrecomp: false: the controller is read as at rest while another window has the focus
     bool async_shaders = true;         // RECOMP_ASYNC_SHADERS=0: wait for every pipeline
-    bool show_launcher = true;         // xboxrecomp: hpcos_launcher.exe shows its page; false starts the game straight away (Shift shows it)
-    bool start_menu = false;           // xboxrecomp: the settings page before the game starts (RECOMP_START_MENU); hpcos_launcher.exe is the usual way
+    bool start_menu = false;           // xboxrecomp: the settings page before the game starts (RECOMP_START_MENU); Barthes Launcher's Game settings turns it on
     // xboxrecomp: frame rate, accessibility and controls (input.cpp, the final pass)
     uint32_t fps_limit = 0;            // 0 the game's own rate, 30: each frame two vblanks at least
     bool audio_trace = false;          // xboxrecomp: F10 Debug: [DSOUND] lines for each sound (not saved)
