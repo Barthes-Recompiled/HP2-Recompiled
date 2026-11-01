@@ -13,14 +13,20 @@
 set -euo pipefail
 port="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$port"
-toolkit="${XBOXRECOMP_DIR:-$port/../xboxrecomp}"
-cross=(-DCMAKE_TOOLCHAIN_FILE="$toolkit/cmake/mingw-w64-x86_64.cmake")
-objdump=x86_64-w64-mingw32-objdump
-nm=x86_64-w64-mingw32-nm
+# cross from Linux with the toolkit's toolchain file, or native on Windows (MSYS2 UCRT64 shell: gcc, objdump, nm)
+if command -v x86_64-w64-mingw32-objdump > /dev/null; then
+    cross=(-DCMAKE_TOOLCHAIN_FILE="${XBOXRECOMP_DIR:-$port/../xboxrecomp}/cmake/mingw-w64-x86_64.cmake")
+    objdump=x86_64-w64-mingw32-objdump
+    nm=x86_64-w64-mingw32-nm
+else
+    cross=(-G Ninja)
+    objdump=objdump
+    nm=nm
+fi
 mkdir -p logs
 cmake -S . -B build-release "${cross[@]}" -DCMAKE_BUILD_TYPE=Release -DHPCOS_RELEASE=ON \
       -DHPCOS_VERSION="${VERSION:-0.2.0}" > logs/build-release-config.log
-nice -n 10 cmake --build build-release -j"$(nproc)" --target hpcos hpcos_launcher > logs/build-release.log 2>&1 ||
+nice -n 10 cmake --build build-release -j4 --target hpcos hpcos_launcher > logs/build-release.log 2>&1 ||
     { tail -30 logs/build-release.log; exit 1; }
 
 dist="$port/dist/hpcos-$(date +%Y%m%d)"
@@ -35,9 +41,17 @@ cp -f CHANGES.md "$dist/CHANGES.txt"
 # source), and the MIT code built in: the renderer and Dear ImGui
 cp -f LICENSE "$dist/licenses/LICENSE.txt"
 cp -f NOTICE "$dist/licenses/NOTICE.txt"
-cp -f "$toolkit/LICENSE" "$dist/licenses/xboxrecomp-MIT.txt"
-cp -f "$toolkit/NOTICE" "$dist/licenses/xboxrecomp-NOTICE.txt"
-cp -f "$toolkit/LICENSES/LGPL-2.1.txt" "$dist/licenses/LGPL-2.1.txt"
+# the toolkit beside the repo (upstream's layout), or in the repo itself (its root holds the toolkit and its licences)
+toolkit="${XBOXRECOMP_DIR:-$port/../xboxrecomp}"
+if [ -d "$toolkit" ]; then
+    cp -f "$toolkit/LICENSE" "$dist/licenses/xboxrecomp-MIT.txt"
+    cp -f "$toolkit/NOTICE" "$dist/licenses/xboxrecomp-NOTICE.txt"
+    cp -f "$toolkit/LICENSES/LGPL-2.1.txt" "$dist/licenses/LGPL-2.1.txt"
+else
+    cp -f "$port/../LICENSES/xboxrecomp-MIT.txt" "$dist/licenses/xboxrecomp-MIT.txt"
+    cp -f "$port/../NOTICE" "$dist/licenses/xboxrecomp-NOTICE.txt"
+    cp -f "$port/../LICENSES/LGPL-2.1.txt" "$dist/licenses/LGPL-2.1.txt"
+fi
 cp -f src/renderer/LICENSE "$dist/licenses/renderer-MIT.txt"
 cp -f third_party/imgui/LICENSE.txt "$dist/licenses/DearImGui.txt"
 # the launcher title's font, Magic School One (FontMesa): its own terms, from its download

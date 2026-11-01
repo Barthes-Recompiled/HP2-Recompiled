@@ -67,6 +67,7 @@ struct Settings {
     bool tone_mapping = false;
     uint32_t ambient_occlusion = 0;    // the original's needs a hook into the game's translucent pass; none here yet
     bool controller = true;            // xboxrecomp: false: the PC's controller is read as at rest (keyboard and mouse stay)
+    bool background_pad = true;        // xboxrecomp: false: the controller is read as at rest while another window has the focus
     bool async_shaders = true;         // RECOMP_ASYNC_SHADERS=0: wait for every pipeline
     bool show_launcher = true;         // xboxrecomp: hpcos_launcher.exe shows its page; false starts the game straight away (Shift shows it)
     bool start_menu = false;           // xboxrecomp: the settings page before the game starts (RECOMP_START_MENU); hpcos_launcher.exe is the usual way

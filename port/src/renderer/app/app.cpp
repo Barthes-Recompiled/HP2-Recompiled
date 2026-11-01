@@ -81,6 +81,8 @@ const Entry kEntries[] = {
     {"fov", "RECOMP_FOV", Kind::U32, FIELD(fov), 80, 130, "field of view, % of the game's"},
     {"controller", nullptr, Kind::Bool, FIELD(controller), 0, 0,
      "false: the game ignores the PC's controller (keyboard and mouse still play)"},
+    {"background_input", nullptr, Kind::Bool, FIELD(background_pad), 0, 0,
+     "false: the controller is ignored while another window has the focus; true reads it anyway (as before)"},
     {"async_shaders", "RECOMP_ASYNC_SHADERS", Kind::Bool, FIELD(async_shaders), 0, 0,
      "a draw whose pipeline is still compiling is skipped instead of waited for"},
     {"start_menu", "RECOMP_START_MENU", Kind::Bool, FIELD(start_menu), 0, 0,
