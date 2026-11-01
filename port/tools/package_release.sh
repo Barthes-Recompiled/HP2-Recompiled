@@ -24,7 +24,7 @@ else
 fi
 mkdir -p logs
 cmake -S . -B build-release "${cross[@]}" -DCMAKE_BUILD_TYPE=Release -DHPCOS_RELEASE=ON \
-      -DHPCOS_VERSION="${VERSION:-0.2.0}" > logs/build-release-config.log
+      -DHPCOS_VERSION="${VERSION:-1.0.2}" > logs/build-release-config.log
 nice -n 10 cmake --build build-release -j4 --target hpcos > logs/build-release.log 2>&1 ||
     { tail -30 logs/build-release.log; exit 1; }
 

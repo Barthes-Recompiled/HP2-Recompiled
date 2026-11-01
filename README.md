@@ -7,7 +7,7 @@ Direct3D 8, DirectSound and input replaced by native code. No emulator. Part of
 [Philosopher's Stone](https://github.com/Barthes-Recompiled/HP1-Recompiled) and
 [Prisoner of Azkaban](https://github.com/Barthes-Recompiled/HP3-Recompiled).
 
-**Current release: 1.0.1**, for the USA and PAL discs. Built on, and with endless thanks to,
+**Current release: 1.0.2**, for the USA and PAL discs. Built on, and with endless thanks to,
 [MiddleDucky's port](#thank-you-middleducky).
 
 Features beyond the original:

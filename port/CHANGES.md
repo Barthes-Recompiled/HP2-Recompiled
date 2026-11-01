@@ -1,5 +1,13 @@
 # Changes
 
+## 1.0.2 (2026-11-01)
+
+- **hpcos.exe starts on its own.** Double-click it, use a shortcut, Quiver or the Barthes Launcher: it no longer needs
+  the separate `hpcos_launcher.exe`, which is gone (delete it from an older install if you like). Every start writes
+  `hpcos_run.log` beside the exe, with the crash report if the game crashes; send it with a problem report.
+- **A new icon:** volume II from the Barthes Launcher's shelf, drawn for the project (no game artwork).
+- Readme fixes: the Barthes Launcher download, and the settings and logs as they really are.
+
 ## 1.0.1 (2026-11-01)
 
 - **The game's Xbox disk images now live beside it**, in `saves\xbox`, instead of a folder shared by every port
