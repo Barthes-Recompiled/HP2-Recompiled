@@ -60,6 +60,8 @@ The port creates these itself on the first run:
     saves\         your saved games; saves\xbox holds the game's Xbox
                    disk images, so the whole folder can be moved or backed
                    up as it is
+    hpcos_run.log  what the game printed on its last start (send it
+                   with a problem report)
     shadercache\   shaders and pipelines built on your PC
     logs\runs\     a log of each start (the newest 10 are kept)
 

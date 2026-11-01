@@ -102,7 +102,7 @@ Barthes Launcher.
 | "Failed to load default.xbe" | The disc files are missing: check that `game\default.xbe` exists beside `hpcos.exe`. |
 | The game says it is the wrong disc | Download the other build (`PAL` or `USA`), or let the Barthes Launcher pick it. |
 | Crashes, missing sound or pictures in one place | A disc file may be damaged: **Verify files** on the game's page in the Barthes Launcher names it; add your disc again to repair. |
-| The game won't start or closes at once | Update your graphics driver (DirectX 12 is required). The newest log in `logs
+| The game won't start or closes at once | Update your graphics driver (DirectX 12 is required). Every start writes `hpcos_run.log` beside `hpcos.exe`; send it with your report. The newest log in `logs\runs` (F10 > Debug > *Open logs folder*) helps too. |
 uns` says what happened; send it with your report (F10 > Debug > *Open logs folder*). |
 | A short pause the first time you enter an area | Shaders are being built for your card. The port ships shaders made ahead, and from the second start it prepares everything it has seen while you are in the menus. |
 | Keyboard doesn't move Harry while a pad is plugged in | Turn off F10 > Controls > *Use controller*. |
