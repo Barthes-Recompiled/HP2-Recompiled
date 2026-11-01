@@ -48,13 +48,13 @@ enum {
     kProgress = 0x527B78, kCards = 0x527E0A, kCardCount = 101, kBeans = 0x527EE0, kBeansMax = 0x527EE2,
     kHouse = 0x527EE4, kHealthMax = 0x527EF6, kSpells = 0x527F0C, kLevelStart = 0x527DFC, kSelectorStart = 0x1EF704,
     kCardItem = 0x2000, kLevels = 59, kCreditsLevel = 52, kSkipToLevel = 30, kSkipToDay = 1,
-    kChargedFlipendo = 0x7002,
+    kChargedFlipendo = 0x7002, kCollect = 0x527F30, kStars = 0x527F48, kChamber = 0x527D20,
 };
 
 static struct {
     int ready;
     uint8_t card[kCardCount + 1], visited[kLevels];
-    uint32_t spells, ap_spells, spells_seen;
+    uint32_t spells, ap_spells, spells_seen, coll, stars, chamber;
     int beans, beans_got, ap_beans, house;
     uint8_t ap_card[kCardCount + 1];
 } g;
@@ -110,6 +110,15 @@ void sub_00081A10(void)
     }
     record(item, from, p);
     if (!hpcos_ap_enabled()) return;
+    /* a scripted one-shot whose item comes from data: the call site is the check (sub_000EC200's chest reward in the
+     * Library; its bit 0x20 of 0x527CD8 keeps it single) */
+    static const uint32_t kScriptedSites[] = {0xEC238};
+    for (unsigned i = 0; i < sizeof kScriptedSites / sizeof *kScriptedSites; i++)
+        if (from == kScriptedSites[i]) {
+            char site[24];
+            snprintf(site, sizeof site, "site:%x", (unsigned)from & 0xFFFFFu);
+            hpcos_ap_location(site);
+        }
     const char *key = p[0] || p[1] || p[2] ? hpcos_ap_pickup((int)MEM32(kProgress), item, p[0], p[1], p[2]) : NULL;
     if (key) hpcos_ap_location(key);
     else {
@@ -201,6 +210,18 @@ static void counters(void)
     for (int b = 0; b < 32; b++)
         if (fresh & (1u << b)) check("spell:%d", b);
     g.spells = spells;
+
+    /* progress words the 2026-11-01 research found: the collection word (a 0x9xxx grant ORs its bit in), the three
+     * distinguished stars (0xA001..3) and the Chamber bitfield's two checkpoint doors and completion (0x100, 0x200,
+     * 0x400; the Library's bits are written in stage masks at load, so they aren't polled: see kScriptedSites) */
+    uint32_t coll = MEM16(kCollect), stars = MEM16(kStars) & 7u, chamber = MEM32(kChamber) & 0x700u;
+    for (int b = 0; b < 16; b++)
+        if ((coll & ~g.coll) & (1u << b)) check("coll:%d", b);
+    for (int b = 0; b < 3; b++)
+        if ((stars & ~g.stars) & (1u << b)) check("star:%d", b);
+    for (int b = 8; b <= 10; b++)
+        if ((chamber & ~g.chamber) & (1u << b)) check("chamber:%d", b);
+    g.coll = coll, g.stars = stars, g.chamber = chamber;
 
     uint32_t level = MEM32(kProgress);
     if (level < kLevels && !g.visited[level]) {

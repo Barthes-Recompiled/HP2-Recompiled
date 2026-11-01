@@ -12,6 +12,10 @@ Location keys (what src/hle_ap.c reports):
   house:<n>          Gryffindor reached n house points (0x527EE4)
   pickup:<lv>:<hex>:<x>:<z>  a successful grant near that census object
   reward:<hex>       a successful constant scripted reward (census mode)
+  coll:<bit>         that bit of the collection word 0x527F30 became set (Folio-style finds; 0x9xxx grants)
+  star:<bit>         that bit of 0x527F48 became set (the three distinguished 0xAxxx stars)
+  chamber:<bit>      that bit (8, 9, 10) of the Chamber bitfield 0x527D20 became set (checkpoint doors, completion)
+  site:<hex>         a successful give-item from that one-shot call site (a scripted reward whose item comes from data)
 IDs are given in a fixed order (by key, sorted), so a rebuild gives the same catalog; the version string carries a hash
 of the keys and the bridge refuses a slot built from another catalog."""
 import argparse
@@ -41,6 +45,13 @@ CARDS = 101
 CARD_MILESTONES = range(5, CARDS + 1, 5)
 BEAN_MILESTONES = [10, 25] + list(range(50, 2001, 50))
 HOUSE_MILESTONES = range(25, 501, 25)
+# 2026-11-01 static research (hp2_ap research t2/t4): collection word 0x527F30 (16 bits), stars 0x527F48 (3 bits),
+# Chamber checkpoint/completion bits 0x100/0x200/0x400 of 0x527D20, and the Library chest reward's give-item call
+# (sub_000EC200, return address 0xEC238; the item id comes from a record, the site is one-shot via bit 0x20 of 0x527CD8)
+COLLECTION_BITS = range(16)
+STAR_BITS = range(3)
+CHAMBER_BITS = (8, 9, 10)
+SITES = {"ec238": ("Library reward chest opened", "Library")}
 
 
 # Only distinct constant grant sites in give_item_report.md; overlapping generated
@@ -115,6 +126,15 @@ def build(census=None):
         add(f"visit:{lv}", f"Visit {name}", name, "Places")
     for n in HOUSE_MILESTONES:
         add(f"house:{n}", f"Gryffindor {n} house points", "Anywhere", "House Points")
+    for b in COLLECTION_BITS:
+        add(f"coll:{b}", f"Collection item {b + 1} found", "Anywhere", "Collections")
+    for b in STAR_BITS:
+        add(f"star:{b}", f"Challenge star {b + 1} earned", "Anywhere", "Collections")
+    for b, name in zip(CHAMBER_BITS, ("first Chamber door opened", "second Chamber door opened",
+                                        "Chamber sequence completed")):
+        add(f"chamber:{b}", f"Chamber: {name}", LEVELS[25], "Story Flags")
+    for site, (name, place) in SITES.items():
+        add(f"site:{site}", name, place, "Story Flags")
     if census is not None:
         # Sidecar is optional: hand-written TSVs remain supported. The live
         # census resolves the otherwise unknown 3xxx dispatch tables.
