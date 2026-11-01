@@ -35,6 +35,7 @@
 #include <shlobj.h>
 #include <dbghelp.h>
 #include <stdio.h>
+#include <io.h>
 #include <stdlib.h>
 #include <stdbool.h>
 #include <string.h>
@@ -1016,6 +1017,46 @@ static int xbe_is_expected_edition(const uint8_t *x, size_t n)
 #endif
 }
 
+/* Barthes Recompiled: hpcos.exe starts on its own (Explorer, a shortcut, Quiver) as well as from the Barthes
+ * Launcher, so it sets up what the upstream launcher used to hand it: the exe's folder as the working folder
+ * (game\, saves\ and the logs are relative to it) and, when no output was handed down, its console output in
+ * hpcos_run.log there, as the Barthes Launcher writes it. Both streams append, so neither overwrites the other. */
+static void start_alone(void)
+{
+    wchar_t dir[MAX_PATH];
+    DWORD n = GetModuleFileNameW(NULL, dir, MAX_PATH);
+    wchar_t *slash = n && n < MAX_PATH ? wcsrchr(dir, L'\\') : NULL;
+    if (slash) {
+        slash[1] = 0;
+        SetCurrentDirectoryW(dir);
+    }
+    HANDLE out = GetStdHandle(STD_OUTPUT_HANDLE);
+    if (out && out != INVALID_HANDLE_VALUE) return;
+    FILE *f = fopen("hpcos_run.log", "w");  /* truncated once, then both streams append */
+    if (!f) return;
+    fclose(f);
+    if (freopen("hpcos_run.log", "a", stdout))
+        SetStdHandle(STD_OUTPUT_HANDLE, (HANDLE)_get_osfhandle(_fileno(stdout)));
+    if (freopen("hpcos_run.log", "a", stderr))
+        SetStdHandle(STD_ERROR_HANDLE, (HANDLE)_get_osfhandle(_fileno(stderr)));
+}
+
+/* Barthes Recompiled: the port's defaults, which the upstream launcher used to set; a variable already set wins (the
+ * Barthes Launcher, a script, debug.env). RECOMP_START_MENU is left to hpcos.toml's start_menu. */
+static void set_default_env(void)
+{
+    static const char *const kDefaults[][2] = {
+        {"RECOMP_TITLE_KEVENTS", "1"}, {"RECOMP_VBLANK", "1"}, {"RECOMP_AC97_READY", "1"},
+        {"RECOMP_DSP_ACK", "0x834D0810"}, {"RECOMP_PB_EXEC", "1"}, {"RECOMP_FB_WINDOW", "1"},
+        {"RECOMP_USB", "1"}, {"RECOMP_ACK_SLEEP_US", "250"},
+    };
+    for (size_t i = 0; i < sizeof kDefaults / sizeof kDefaults[0]; i++) {
+        if (GetEnvironmentVariableA(kDefaults[i][0], NULL, 0)) continue;
+        SetEnvironmentVariableA(kDefaults[i][0], kDefaults[i][1]);
+        _putenv_s(kDefaults[i][0], kDefaults[i][1]);
+    }
+}
+
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
                    LPSTR lpCmdLine, int nCmdShow)
 {
@@ -1027,20 +1068,18 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
     (void)lpCmdLine;
     (void)nCmdShow;
 
-    /* xboxrecomp (single_instance.h), before anything touches the log, saves or shader cache: one copy at a time,
-     * and only from the launcher. A running game is reported first, so opening hpcos.exe again just shows it. */
+    /* xboxrecomp (single_instance.h), before anything touches the log, saves or shader cache: one copy at a time
+     * (however it was started). A running game is reported first, so opening hpcos.exe again just shows it. */
     if (hpcos_GameRunning()) {
         hpcos_ReportAlreadyRunning();
-        return 0;
-    }
-    if (!hpcos_StartedByLauncher()) {
-        hpcos_OfferLauncher();
         return 0;
     }
     if (!hpcos_ClaimSingleInstance()) {  /* another started in between */
         hpcos_ReportAlreadyRunning();
         return 0;
     }
+
+    start_alone();
 
     /* Unbuffered output for immediate visibility during debugging */
     setvbuf(stdout, NULL, _IONBF, 0);
@@ -1070,6 +1109,8 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
             if (f) fclose(f);
         }
     }
+
+    set_default_env();
 
     /* hpcos.toml: display, resolution, anti-aliasing... (renderer/app/app.cpp),
      * handed on as RECOMP_* variables before any thread reads them */

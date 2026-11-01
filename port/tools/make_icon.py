@@ -1,159 +1,101 @@
-#!/usr/bin/env python3
-"""The port's own icon, drawn from simple shapes (no game artwork): a wand with a gold sparkle on a tile in the
-launcher's colours (launcher.cpp, DrawBackground), one palette a game.
+"""Draws the Barthes Recompiled icons from simple shapes (original art, no game artwork). The same script lives in
+the launcher's and each game's tools/, so the family stays one picture:
 
-    python tools/make_icon.py cos|ps|poa res/app.ico [preview.png]
+    python tools/make_icon.py shelf|hp1|hp2|hp3 [out.ico] [preview.png]
 
-Original artwork made for these repositories: the exes' icon (CMakeLists.txt embeds res/app.ico). Standard library
-only: shapes are rasterised 4x supersampled, then box filtered to 16, 24, 32, 48, 64, 128 and 256 px PNG entries.
+shelf: the launcher's three cloth-bound spines on the shelf's dark wall; hp1/hp2/hp3: one book from that shelf,
+face on, with its volume number in gold (I, II, III drawn as serifed bars, no font). Needs Pillow.
 """
-import math
-import struct
+import colorsys
 import sys
-import zlib
+from pathlib import Path
 
-SS = 4  # supersampling
+from PIL import Image, ImageDraw
 
-# the launchers' backdrops, top and bottom (IM_COL32 in DrawBackground), and the title's gold (222, 186, 92)
-PALETTES = {
-    "cos": ((40, 96, 62), (16, 44, 28)),   # green
-    "ps": ((124, 10, 2), (48, 4, 4)),      # Gryffindor scarlet
-    "poa": ((84, 44, 128), (30, 14, 52)),  # purple
-}
-GOLD = (222 / 255, 186 / 255, 92 / 255, 1.0)
-GOLD_LIGHT = (0.98, 0.90, 0.66, 1.0)
-TOP = BOTTOM = None  # set from the palette in main()
+WALL = (22, 24, 30, 255)
+PAPER = (240, 233, 218, 255)
+GOLD = (222, 186, 92, 255)
+HUES = {"hp1": 0.00, "hp2": 0.38, "hp3": 0.62}  # the shelf's spines: scarlet, green, blue-violet
 
 
-def inside_round_rect(x, y, x0, y0, x1, y1, r):
-    cx = min(max(x, x0 + r), x1 - r)
-    cy = min(max(y, y0 + r), y1 - r)
-    return (x - cx) ** 2 + (y - cy) ** 2 <= r * r
+def binding(h, v=0.50, s=0.55):
+    r, g, b = colorsys.hsv_to_rgb(h, s, v)
+    return int(r * 255), int(g * 255), int(b * 255), 255
 
 
-def inside_poly(x, y, pts):
-    c = False
-    j = len(pts) - 1
-    for i in range(len(pts)):
-        xi, yi = pts[i]
-        xj, yj = pts[j]
-        if (yi > y) != (yj > y) and x < (xj - xi) * (y - yi) / (yj - yi) + xi:
-            c = not c
-        j = i
-    return c
+def numeral(d, n, cx, top, bottom, stem, k):
+    """n serifed stems ("I", "II", "III") centred on cx between top and bottom"""
+    gap = stem * 1.1
+    serif = stem * 0.55
+    width = n * stem + (n - 1) * gap
+    x = cx - width / 2
+    for _ in range(n):
+        d.rectangle([x, top, x + stem, bottom], fill=GOLD)
+        for y in (top, bottom - max(1, 3 * k)):
+            d.rectangle([x - serif, y, x + stem + serif, y + max(1, 3 * k)], fill=GOLD)
+        x += stem + gap
 
 
-def star(cx, cy, r_out, r_in, n=4, rot=0.0):
-    pts = []
-    for k in range(2 * n):
-        r = r_out if k % 2 == 0 else r_in
-        a = rot + math.pi * k / n
-        pts.append((cx + r * math.sin(a), cy - r * math.cos(a)))
-    return pts
+def shelf(size):
+    k = size / 256
+    im = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+    d = ImageDraw.Draw(im)
+    d.rounded_rectangle([0, 0, size - 1, size - 1], radius=int(40 * k), fill=WALL)
+    floor = 214 * k
+    books = [(HUES["hp1"], 44, 150, 1), (HUES["hp2"], 100, 166, 2), (HUES["hp3"], 156, 140, 3)]
+    for hue, x, h, n in books:
+        x0, x1 = x * k, (x + 50) * k
+        top = floor - h * k
+        d.rounded_rectangle([x0, top, x1, floor], radius=max(1, int(4 * k)), fill=binding(hue))
+        band = binding(hue, 0.30, 0.45)
+        for y in (top + 14 * k, floor - 22 * k):
+            d.rectangle([x0, y, x1, y + 5 * k], fill=band)
+        if size >= 48:  # the volume numbers only where they can be read
+            mid = (top + floor) / 2
+            numeral(d, n, (x0 + x1) / 2, mid - 18 * k, mid + 18 * k, 5 * k, k)
+    d.rectangle([24 * k, floor, 232 * k, floor + 7 * k], fill=PAPER)
+    return im
 
 
-def mix(a, b, t):
-    return tuple(a[i] + (b[i] - a[i]) * t for i in range(4))
+def book(size, hue, n):
+    k = size / 256
+    im = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+    d = ImageDraw.Draw(im)
+    d.rounded_rectangle([0, 0, size - 1, size - 1], radius=int(40 * k), fill=WALL)
+    x0, y0, x1, y1 = 52 * k, 26 * k, 212 * k, 222 * k
+    # the page block peeking out at the fore-edge and foot, then the board
+    d.rounded_rectangle([x0 + 8 * k, y0 + 8 * k, x1 + 6 * k, y1 + 6 * k], radius=max(1, int(6 * k)), fill=PAPER)
+    d.rounded_rectangle([x0, y0, x1, y1], radius=max(1, int(8 * k)), fill=binding(hue))
+    # the spine's hinge down the left, and the shelf's bands across it
+    dark = binding(hue, 0.30, 0.45)
+    d.rectangle([x0, y0 + 4 * k, x0 + 22 * k, y1 - 4 * k], fill=dark)
+    for y in (y0 + 22 * k, y1 - 30 * k):
+        d.rectangle([x0, y, x1, y + 8 * k], fill=dark)
+    # gold label frame and the volume number
+    lx0, ly0, lx1, ly1 = x0 + 46 * k, y0 + 56 * k, x1 - 22 * k, y1 - 64 * k
+    if size >= 32:
+        line = max(1, int(5 * k))
+        d.rectangle([lx0, ly0, lx1, ly1], outline=GOLD, width=line)
+    stem = 14 * k if n < 3 else 12 * k
+    numeral(d, n, (lx0 + lx1) / 2, ly0 + 18 * k, ly1 - 18 * k, max(1.5, stem), k)
+    return im
 
 
-def over(dst, src):
-    a = src[3]
-    return (src[0] * a + dst[0] * (1 - a), src[1] * a + dst[1] * (1 - a), src[2] * a + dst[2] * (1 - a),
-            a + dst[3] * (1 - a))
-
-
-def render(n):
-    """the icon at n x n, RGBA floats 0..1, in a unit square scaled to n"""
-    N = n * SS
-    s = N / 256.0  # shapes are laid out on a 256 grid
-    # the wand: from bottom left to top right, a rod with a lighter handle end
-    ax, ay, bx, by = 62 * s, 200 * s, 176 * s, 86 * s
-    dx, dy = bx - ax, by - ay
-    length = math.hypot(dx, dy)
-    ux, uy = dx / length, dy / length
-    half = 9 * s
-    big = star(186 * s, 74 * s, 54 * s, 13 * s, 4, 0.0)
-    small1 = star(116 * s, 64 * s, 18 * s, 5 * s, 4, math.pi / 4)
-    small2 = star(206 * s, 150 * s, 14 * s, 4 * s, 4, 0.0)
-    glow_c, glow_r = (186 * s, 74 * s), 70 * s
-    out = []
-    for py in range(N):
-        row = []
-        for px in range(N):
-            x, y = px + 0.5, py + 0.5
-            c = (0.0, 0.0, 0.0, 0.0)
-            if inside_round_rect(x, y, 8 * s, 8 * s, 248 * s, 248 * s, 52 * s):
-                t = y / N
-                c = mix(TOP, BOTTOM, t)
-                # a soft glow behind the sparkle
-                d = math.hypot(x - glow_c[0], y - glow_c[1]) / glow_r
-                if d < 1:
-                    c = over(c, (GOLD[0], GOLD[1], GOLD[2], 0.35 * (1 - d) ** 2))
-            # the wand's rod: distance from the segment
-            t = ((x - ax) * ux + (y - ay) * uy)
-            if 0 <= t <= length:
-                dist = abs((x - ax) * uy - (y - ay) * ux)
-                taper = half * (1.0 - 0.35 * t / length)
-                if taper < dist <= taper + 3 * s:  # a pale rim, so the wood stands out on the red tile too
-                    c = over(c, (GOLD_LIGHT[0], GOLD_LIGHT[1], GOLD_LIGHT[2], 0.55))
-                if dist <= taper:
-                    wood = (0.42, 0.25, 0.13, 1.0) if t > length * 0.32 else (0.27, 0.15, 0.08, 1.0)
-                    shade = 0.75 + 0.25 * (1 - dist / taper)
-                    c = over(c, (wood[0] * shade, wood[1] * shade, wood[2] * shade, 1.0))
-            for pts, col in ((big, GOLD), (small1, GOLD_LIGHT), (small2, GOLD_LIGHT)):
-                if inside_poly(x, y, pts):
-                    c = over(c, col)
-            row.append(c)
-        out.append(row)
-    # box filter SS x SS
-    px = []
-    for y in range(n):
-        line = []
-        for x in range(n):
-            acc = [0.0, 0.0, 0.0, 0.0]
-            for yy in range(SS):
-                for xx in range(SS):
-                    p = out[y * SS + yy][x * SS + xx]
-                    acc[0] += p[0] * p[3]; acc[1] += p[1] * p[3]; acc[2] += p[2] * p[3]; acc[3] += p[3]
-            a = acc[3]
-            if a:
-                line.append((round(255 * acc[0] / a), round(255 * acc[1] / a), round(255 * acc[2] / a),
-                             round(255 * a / (SS * SS))))
-            else:
-                line.append((0, 0, 0, 0))
-        px.append(line)
-    return px
-
-
-def png(px, n):
-    rows = b"".join(b"\0" + bytes(c for p in row for c in p) for row in px)
-    def chunk(t, d):
-        return struct.pack(">I", len(d)) + t + d + struct.pack(">I", zlib.crc32(t + d) & 0xFFFFFFFF)
-    return (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", n, n, 8, 6, 0, 0, 0))
-            + chunk(b"IDAT", zlib.compress(rows, 9)) + chunk(b"IEND", b""))
+def draw(kind, size):
+    return shelf(size) if kind == "shelf" else book(size, HUES[kind], int(kind[-1]))
 
 
 def main():
-    global TOP, BOTTOM
-    if len(sys.argv) < 3 or sys.argv[1] not in PALETTES:
-        sys.exit(__doc__)
-    top, bottom = PALETTES[sys.argv.pop(1)]
-    TOP = tuple(v / 255 for v in top) + (1.0,)
-    BOTTOM = tuple(v / 255 for v in bottom) + (1.0,)
+    kind = sys.argv[1] if len(sys.argv) > 1 else "shelf"
+    if kind != "shelf" and kind not in HUES:
+        sys.exit("usage: make_icon.py shelf|hp1|hp2|hp3 [out.ico] [preview.png]")
+    out = Path(sys.argv[2] if len(sys.argv) > 2 else Path(__file__).resolve().parent.parent / "res" / "app.ico")
     sizes = [16, 24, 32, 48, 64, 128, 256]
-    images = [png(render(n), n) for n in sizes]
-    head = struct.pack("<HHH", 0, 1, len(images))
-    off = 6 + 16 * len(images)
-    entries = b""
-    for n, im in zip(sizes, images):
-        entries += struct.pack("<BBBBHHII", n % 256, n % 256, 0, 0, 1, 32, len(im), off)
-        off += len(im)
-    with open(sys.argv[1], "wb") as f:
-        f.write(head + entries + b"".join(images))
-    if len(sys.argv) > 2:
-        with open(sys.argv[2], "wb") as f:
-            f.write(images[-1])
-    print(f"{sys.argv[1]}: sizes {sizes}")
+    # each size drawn on its own grid (not scaled down from 256), so the small ones stay crisp
+    frames = {s: draw(kind, s * 4).resize((s, s), Image.LANCZOS) for s in sizes}
+    frames[256].save(out, format="ICO", sizes=[(s, s) for s in sizes], append_images=[frames[s] for s in sizes[:-1]])
+    if len(sys.argv) > 3:
+        frames[256].save(sys.argv[3])
 
 
 if __name__ == "__main__":

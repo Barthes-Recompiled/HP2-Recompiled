@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 # The build players get: configures build-release (HPCOS_RELEASE=ON: stack canaries on the hand-written code,
-# SSE4.1), builds the game and the launcher, and puts in dist/hpcos-<date>/:
-#   hpcos_launcher.exe                setup: 4:3 / 16:9, graphics, controls; unpacks a disc image; starts the game
+# SSE4.1), builds the game, and puts in dist/hpcos-<date>/:
 #   hpcos.exe                         the game
 #   shadercache\base_shaders.bin      shaders compiled ahead (read only; the player's own go in shaders.bin)
 #   shadercache\base_pipelines.bin    the pipelines a play-through used, made ahead at the first start
@@ -26,14 +25,14 @@ fi
 mkdir -p logs
 cmake -S . -B build-release "${cross[@]}" -DCMAKE_BUILD_TYPE=Release -DHPCOS_RELEASE=ON \
       -DHPCOS_VERSION="${VERSION:-0.2.0}" > logs/build-release-config.log
-nice -n 10 cmake --build build-release -j4 --target hpcos hpcos_launcher > logs/build-release.log 2>&1 ||
+nice -n 10 cmake --build build-release -j4 --target hpcos > logs/build-release.log 2>&1 ||
     { tail -30 logs/build-release.log; exit 1; }
 
 dist="$port/dist/hpcos-$(date +%Y%m%d)"
 # Never delete the folder: players (and testers) drop game/, settings and saves into it. Only the files below are
 # replaced; anything else found there is left alone.
 mkdir -p "$dist/licenses" "$dist/shadercache"
-cp -f build-release/hpcos.exe build-release/hpcos_launcher.exe "$dist/"
+cp -f build-release/hpcos.exe "$dist/"
 cp -f README.txt "$dist/"
 cp -f CHANGES.md "$dist/CHANGES.txt"
 # licences: the port's own (MIT), the toolkit's (MIT) and its attribution, the LGPL code from xemu linked into
@@ -54,8 +53,6 @@ else
 fi
 cp -f src/renderer/LICENSE "$dist/licenses/renderer-MIT.txt"
 cp -f third_party/imgui/LICENSE.txt "$dist/licenses/DearImGui.txt"
-# the launcher title's font, Magic School One (FontMesa): its own terms, from its download
-cp -f src/launcher/font/MagicSchool-licensing.txt "$dist/licenses/MagicSchool-font.txt"
 
 # res/base_shaders.bin and res/base_pipelines.bin, from a play-through on Windows (its shadercache\shaders.bin and
 # pipelines_list.bin): a player's first visit to an area then needs no shader compiler and its pipelines are made
