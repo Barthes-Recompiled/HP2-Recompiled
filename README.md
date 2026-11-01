@@ -27,10 +27,10 @@ Xbox disc. The build regenerates the recompiled code from your `default.xbe`.
 
 ## Quick start
 
-1. Download **`barthes_launcher.exe`** from the
-   [Barthes Launcher releases](https://github.com/Barthes-Recompiled/Barthes-Launcher/releases/latest) and put it in
-   a folder of its own, for example `C:\Games\Barthes`.
-2. Start it, pick **Chamber of Secrets** on the shelf and press **Install**.
+1. Download **`BarthesLauncher-windows-<version>.zip`** from the
+   [Barthes Launcher releases](https://github.com/Barthes-Recompiled/Barthes-Launcher/releases/latest) and unzip it
+   somewhere of its own, for example `C:\Games` (it makes a `BarthesLauncher` folder).
+2. Start `barthes_launcher.exe`, pick **Chamber of Secrets** on the shelf and press **Install**.
 3. Press **Add disc image or folder...** and choose your `.iso` / `.xiso`, or the `default.xbe` of a disc you
    already extracted. The launcher checks that it is this game's disc, unpacks it, checks every file and installs
    the build for your disc (PAL or USA).
@@ -57,7 +57,6 @@ C:\Games\HP2\
   game\default.xbe     ... and the rest of your disc
   hpcos.toml           your settings (made on the first start)
   saves\               your saved games, and the game's Xbox disk images in saves\xbox
-  logs\runs\           a log of each start (the newest 10 are kept)
 ```
 
 To update by hand, unzip the new release over the old one; `hpcos.toml`, `saves\` and `shadercache\` stay as they
@@ -102,8 +101,7 @@ Barthes Launcher.
 | "Failed to load default.xbe" | The disc files are missing: check that `game\default.xbe` exists beside `hpcos.exe`. |
 | The game says it is the wrong disc | Download the other build (`PAL` or `USA`), or let the Barthes Launcher pick it. |
 | Crashes, missing sound or pictures in one place | A disc file may be damaged: **Verify files** on the game's page in the Barthes Launcher names it; add your disc again to repair. |
-| The game won't start or closes at once | Update your graphics driver (DirectX 12 is required). Every start writes `hpcos_run.log` beside `hpcos.exe`; send it with your report. The newest log in `logs\runs` (F10 > Debug > *Open logs folder*) helps too. |
-uns` says what happened; send it with your report (F10 > Debug > *Open logs folder*). |
+| The game won't start or closes at once | Update your graphics driver (DirectX 12 is required). Every start writes `hpcos_run.log` beside `hpcos.exe`; send it with your report. F10 > Debug > *Open logs folder* opens the folder it is in. |
 | A short pause the first time you enter an area | Shaders are being built for your card. The port ships shaders made ahead, and from the second start it prepares everything it has seen while you are in the menus. |
 | Keyboard doesn't move Harry while a pad is plugged in | Turn off F10 > Controls > *Use controller*. |
 

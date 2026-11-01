@@ -63,7 +63,6 @@ The port creates these itself on the first run:
     hpcos_run.log  what the game printed on its last start (send it
                    with a problem report)
     shadercache\   shaders and pipelines built on your PC
-    logs\runs\     a log of each start (the newest 10 are kept)
 
 
 PLAYING
@@ -204,7 +203,8 @@ Enhancements
                          landing zone (not on the lake)
 
 Debug
-  Logs                   "Open logs folder" shows logs\runs; "Mark this
+  Logs                   "Open logs folder" opens the game's folder, where
+                         hpcos_run.log is; "Mark this
                          moment in the log" notes the time, so a problem can
                          be found in the log: send the log and the mark's
                          number with your report
@@ -229,8 +229,8 @@ Game files are damaged or missing
     hpcos.exe (or that the .xiso / .iso is in the game folder).
 
 The game will not start / closes at once
-    Update your graphics driver (DirectX 12 is required). The newest log in
-    logs\runs says what happened; send it with your report.
+    Update your graphics driver (DirectX 12 is required). hpcos_run.log
+    beside hpcos.exe says what happened; send it with your report.
 
 A short pause the first time you enter an area
     Shaders are being prepared for your graphics card; the loading picture
